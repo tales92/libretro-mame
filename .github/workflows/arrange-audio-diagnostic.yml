@@ -1,0 +1,114 @@
+name: Arrange Audio - FFS Diagnostic Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-diagnostic:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout arrange-audio branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install MinGW cross compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            mingw-w64 \
+            gcc-mingw-w64-x86-64-posix \
+            g++-mingw-w64-x86-64-posix \
+            binutils-mingw-w64-x86-64 \
+            lld
+
+      - name: Apply FFS audio diagnostic patch
+        shell: bash
+        run: |
+          cat > /tmp/arrange-audio.patch <<'PATCH'
+          --- a/src/mame/snk/neogeo.cpp
+          +++ b/src/mame/snk/neogeo.cpp
+          @@ -562,6 +562,10 @@
+           
+           #define LOG_VIDEO_SYSTEM         (1U << 1)
+           
+          +#ifndef ARRANGE_AUDIO_DIAGNOSTIC
+          +#define ARRANGE_AUDIO_DIAGNOSTIC 0
+          +#endif
+          +
+           #define VERBOSE (0)
+           #include "logmacro.h"
+           
+          @@ -1001,6 +1005,14 @@
+           
+           void neogeo_base_state::audio_command_w(uint8_t data)
+           {
+          +#if ARRANGE_AUDIO_DIAGNOSTIC
+          +\tlogerror("[ARRANGE-AUDIO] game=%s cmd=%02x pc=%06x time=%s\\n",
+          +\t\tmachine().system().name,
+          +\t\tdata,
+          +\t\tunsigned(m_maincpu->pc()),
+          +\t\tmachine().time().to_string());
+          +#endif
+          +
+           	// glitches in s1945p without the perfect_quantum here
+           	m_soundlatch->write(data);
+           	machine().scheduler().perfect_quantum(attotime::from_usec(50));
+          PATCH
+
+          git apply --check /tmp/arrange-audio.patch
+          git apply /tmp/arrange-audio.patch
+
+      - name: Build diagnostic Libretro core
+        shell: bash
+        run: |
+          export CC=x86_64-w64-mingw32-gcc-posix
+          export CXX=x86_64-w64-mingw32-g++-posix
+          export AR=x86_64-w64-mingw32-ar
+          export CXXFLAGS="$CXXFLAGS -DARRANGE_AUDIO_DIAGNOSTIC=1"
+
+          make -f Makefile.libretro \
+            platform=win \
+            MINGW64=1 \
+            PTR64=1 \
+            DEBUG=1 \
+            -j2
+
+      - name: Collect diagnostic core
+        shell: bash
+        run: |
+          mkdir -p arrange-audio-artifact
+          find . -type f \( \
+            -name '*_libretro.dll' -o \
+            -name '*_libretro.pdb' -o \
+            -name '*_libretro.dll.a' \
+          \) -print -exec cp --parents {} arrange-audio-artifact/ \;
+
+          test -n "$(find arrange-audio-artifact -type f -name '*_libretro.dll' -print -quit)"
+
+      - name: Upload diagnostic core
+        uses: actions/upload-artifact@v4
+        with:
+          name: arrange-audio-ffs-diagnostic-windows-x64
+          path: arrange-audio-artifact/
+          if-no-files-found: error
+
+      - name: Commit diagnostic source after successful build
+        shell: bash
+        run: |
+          if git diff --quiet -- src/mame/snk/neogeo.cpp; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/mame/snk/neogeo.cpp
+          git commit -m "arrange-audio: add Neo Geo FFS audio command diagnostics"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
