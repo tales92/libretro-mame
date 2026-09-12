@@ -1,7 +1,7 @@
 name: Arrange Audio - FFS Diagnostic Build
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -37,38 +37,41 @@ jobs:
           path = Path("src/mame/snk/neogeo.cpp")
           text = path.read_text(encoding="utf-8")
 
-          marker = '#define LOG_VIDEO_SYSTEM         (1U << 1)\n'
-          if '#define ARRANGE_AUDIO_DIAGNOSTIC 0' not in text:
+          marker = "#define LOG_VIDEO_SYSTEM         (1U << 1)\n"
+          if "#define ARRANGE_AUDIO_DIAGNOSTIC 0" not in text:
               if marker not in text:
                   raise SystemExit("Could not locate LOG_VIDEO_SYSTEM marker")
               insertion = (
                   marker
-                  + '\n'
-                  + '#ifndef ARRANGE_AUDIO_DIAGNOSTIC\n'
-                  + '#define ARRANGE_AUDIO_DIAGNOSTIC 0\n'
-                  + '#endif\n'
+                  + "\n"
+                  + "#ifndef ARRANGE_AUDIO_DIAGNOSTIC\n"
+                  + "#define ARRANGE_AUDIO_DIAGNOSTIC 0\n"
+                  + "#endif\n"
               )
               text = text.replace(marker, insertion, 1)
 
-          old = '''void neogeo_base_state::audio_command_w(uint8_t data)
-{
-\t// glitches in s1945p without the perfect_quantum here
-'''
-          new = '''void neogeo_base_state::audio_command_w(uint8_t data)
-{
-#if ARRANGE_AUDIO_DIAGNOSTIC
-\tlogerror("[ARRANGE-AUDIO] game=%s cmd=%02x pc=%06x time=%s\\n",
-\t\tmachine().system().name,
-\t\tdata,
-\t\tunsigned(m_maincpu->pc()),
-\t\tmachine().time().to_string());
-#endif
+          old = (
+              "void neogeo_base_state::audio_command_w(uint8_t data)\n"
+              "{\n"
+              "\t// glitches in s1945p without the perfect_quantum here\n"
+          )
+          new = (
+              "void neogeo_base_state::audio_command_w(uint8_t data)\n"
+              "{\n"
+              "#if ARRANGE_AUDIO_DIAGNOSTIC\n"
+              "\tlogerror(\"[ARRANGE-AUDIO] game=%s cmd=%02x pc=%06x time=%s\\n\",\n"
+              "\t\tmachine().system().name,\n"
+              "\t\tdata,\n"
+              "\t\tunsigned(m_maincpu->pc()),\n"
+              "\t\tmachine().time().to_string());\n"
+              "#endif\n"
+              "\n"
+              "\t// glitches in s1945p without the perfect_quantum here\n"
+          )
 
-\t// glitches in s1945p without the perfect_quantum here
-'''
           if old not in text:
               raise SystemExit("Could not locate audio_command_w target")
-          if '[ARRANGE-AUDIO] game=%s' not in text:
+          if "[ARRANGE-AUDIO] game=%s" not in text:
               text = text.replace(old, new, 1)
 
           path.write_text(text, encoding="utf-8")
