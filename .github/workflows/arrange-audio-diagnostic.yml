@@ -1,0 +1,114 @@
+name: Arrange Audio - FFS Diagnostic Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-diagnostic:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install MinGW cross compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            mingw-w64 \
+            gcc-mingw-w64-x86-64-posix \
+            g++-mingw-w64-x86-64-posix \
+            binutils-mingw-w64-x86-64 \
+            lld
+
+      - name: Apply and validate FFS audio diagnostic patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/mame/snk/neogeo.cpp")
+          text = path.read_text(encoding="utf-8")
+
+          marker = '#define LOG_VIDEO_SYSTEM         (1U << 1)\n'
+          if '#define ARRANGE_AUDIO_DIAGNOSTIC 0' not in text:
+              if marker not in text:
+                  raise SystemExit("Could not locate LOG_VIDEO_SYSTEM marker")
+              insertion = (
+                  marker
+                  + '\n'
+                  + '#ifndef ARRANGE_AUDIO_DIAGNOSTIC\n'
+                  + '#define ARRANGE_AUDIO_DIAGNOSTIC 0\n'
+                  + '#endif\n'
+              )
+              text = text.replace(marker, insertion, 1)
+
+          old = '''void neogeo_base_state::audio_command_w(uint8_t data)
+{
+\t// glitches in s1945p without the perfect_quantum here
+'''
+          new = '''void neogeo_base_state::audio_command_w(uint8_t data)
+{
+#if ARRANGE_AUDIO_DIAGNOSTIC
+\tlogerror("[ARRANGE-AUDIO] game=%s cmd=%02x pc=%06x time=%s\\n",
+\t\tmachine().system().name,
+\t\tdata,
+\t\tunsigned(m_maincpu->pc()),
+\t\tmachine().time().to_string());
+#endif
+
+\t// glitches in s1945p without the perfect_quantum here
+'''
+          if old not in text:
+              raise SystemExit("Could not locate audio_command_w target")
+          if '[ARRANGE-AUDIO] game=%s' not in text:
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          git diff --check
+          git diff -- src/mame/snk/neogeo.cpp
+
+      - name: Build diagnostic Libretro core
+        shell: bash
+        run: |
+          export CC=x86_64-w64-mingw32-gcc-posix
+          export CXX=x86_64-w64-mingw32-g++-posix
+          export AR=x86_64-w64-mingw32-ar
+          export CXXFLAGS="${CXXFLAGS:-} -DARRANGE_AUDIO_DIAGNOSTIC=1"
+
+          make -f Makefile.libretro \
+            platform=win \
+            PTR64=1 \
+            DEBUG=1 \
+            -j2
+
+      - name: Collect diagnostic core
+        shell: bash
+        run: |
+          set -e
+          rm -rf arrange-audio-artifact
+          mkdir -p arrange-audio-artifact
+
+          find . -type f \( \
+            -name '*_libretro.dll' -o \
+            -name '*_libretro.pdb' -o \
+            -name '*_libretro.dll.a' \
+          \) -print -exec cp --parents {} arrange-audio-artifact/ \;
+
+          test -n "$(find arrange-audio-artifact -type f -name '*_libretro.dll' -print -quit)"
+
+      - name: Upload diagnostic core
+        uses: actions/upload-artifact@v4
+        with:
+          name: arrange-audio-ffs-diagnostic-windows-x64
+          path: arrange-audio-artifact/
+          if-no-files-found: error
