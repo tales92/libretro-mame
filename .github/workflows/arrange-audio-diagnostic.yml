@@ -91,7 +91,7 @@ jobs:
           make -f Makefile.libretro \
             platform=win \
             PTR64=1 \
-            DEBUG=1 \
+            DEBUG=0 \
             -j2
 
       - name: Collect diagnostic core
