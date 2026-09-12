@@ -90,7 +90,7 @@ jobs:
             platform=win \
             PTR64=1 \
             DEBUG=0 \
-            -j2
+            MINGW64=/usr/x86_64-w64-mingw32
 
       - name: Collect diagnostic core
         shell: bash
