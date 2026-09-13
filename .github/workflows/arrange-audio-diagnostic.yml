@@ -78,7 +78,7 @@ jobs:
           git diff --check
           git diff -- src/mame/snk/neogeo.cpp
 
-      - name: Build diagnostic Libretro core
+      - name: Build targeted FFS diagnostic Libretro core
         shell: bash
         run: |
           export CC=x86_64-w64-mingw32-gcc-posix
@@ -90,7 +90,10 @@ jobs:
             platform=win \
             PTR64=1 \
             DEBUG=0 \
-            MINGW64=/usr/x86_64-w64-mingw32
+            MINGW64=/usr/x86_64-w64-mingw32 \
+            SUBTARGET=fatfursp \
+            SOURCES=src/mame/snk/neogeo.cpp \
+            -j2
 
       - name: Collect diagnostic core
         shell: bash
