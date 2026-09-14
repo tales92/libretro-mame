@@ -28,14 +28,17 @@ jobs:
             binutils-mingw-w64-x86-64 \
             lld
 
-      - name: Apply and validate FFS audio diagnostic patch
+      - name: Apply and validate FFS audio diagnostic changes
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path("src/mame/snk/neogeo.cpp")
-          text = path.read_text(encoding="utf-8")
+          # ------------------------------------------------------------
+          # Arrange Audio diagnostic instrumentation
+          # ------------------------------------------------------------
+          neogeo = Path("src/mame/snk/neogeo.cpp")
+          text = neogeo.read_text(encoding="utf-8")
 
           marker = "#define LOG_VIDEO_SYSTEM         (1U << 1)\n"
           if "#define ARRANGE_AUDIO_DIAGNOSTIC 0" not in text:
@@ -72,11 +75,53 @@ jobs:
                   raise SystemExit("Could not locate audio_command_w target")
               text = text.replace(old, new, 1)
 
-          path.write_text(text, encoding="utf-8")
+          neogeo.write_text(text, encoding="utf-8")
+
+          # ------------------------------------------------------------
+          # Libretro/Windows input fix for the diagnostic build
+          #
+          # retroprefix.h intentionally defines SDLMAME_WIN32 for the
+          # Windows Libretro target. In MAME 0.289, input_common.cpp/.h
+          # interpret that macro as a request to include SDL2 headers.
+          # The Libretro input module does not use the SDL input table;
+          # it uses the RetroArch input path instead. Keep the Windows
+          # scan-code support, but do not request the SDL scancode field
+          # for RETROMAME builds.
+          # ------------------------------------------------------------
+          for filename in (
+              "src/osd/modules/input/input_common.cpp",
+              "src/osd/modules/input/input_common.h",
+          ):
+              path = Path(filename)
+              text = path.read_text(encoding="utf-8")
+              old_cond = "#if defined(OSD_SDL) || defined(SDLMAME_WIN32)"
+              new_cond = "#if defined(OSD_SDL) || (defined(SDLMAME_WIN32) && !defined(RETROMAME))"
+
+              if old_cond not in text:
+                  if new_cond not in text:
+                      raise SystemExit(f"Could not locate SDL condition in {filename}")
+              else:
+                  text = text.replace(old_cond, new_cond, 1)
+
+              path.write_text(text, encoding="utf-8")
+
+          # Hard validation: the Windows Libretro build must no longer
+          # include the SDL2 header from input_common.cpp.
+          cpp = Path("src/osd/modules/input/input_common.cpp").read_text(encoding="utf-8")
+          hdr = Path("src/osd/modules/input/input_common.h").read_text(encoding="utf-8")
+          expected = "#if defined(OSD_SDL) || (defined(SDLMAME_WIN32) && !defined(RETROMAME))"
+          if expected not in cpp or expected not in hdr:
+              raise SystemExit("Libretro SDL exclusion was not applied correctly")
+
+          print("FFS diagnostic instrumentation applied.")
+          print("Libretro SDL input exclusion applied to input_common.cpp/.h.")
           PY
 
           git diff --check
-          git diff -- src/mame/snk/neogeo.cpp
+          git diff -- \
+            src/mame/snk/neogeo.cpp \
+            src/osd/modules/input/input_common.cpp \
+            src/osd/modules/input/input_common.h
 
       - name: Build targeted FFS diagnostic Libretro core
         shell: bash
