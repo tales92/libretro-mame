@@ -78,58 +78,6 @@ jobs:
           neogeo.write_text(text, encoding="utf-8")
 
           # ------------------------------------------------------------
-          # Route MAME logerror() output through the RetroArch/libretro
-          # log callback during the diagnostic build. MAME only enables
-          # logerror callbacks when the oslog option is active; the
-          # diagnostic build must not depend on a user-facing MAME option.
-          # ------------------------------------------------------------
-          retromain = Path("src/osd/libretro/retromain.cpp")
-          text = retromain.read_text(encoding="utf-8")
-
-          old_output = """void retro_osd_interface::output_oslog(const char *buffer)
-{
-\tfputs(buffer, stderr);
-}
-"""
-          new_output = """void retro_osd_interface::output_oslog(const char *buffer)
-{
-#if ARRANGE_AUDIO_DIAGNOSTIC
-\tif (log_cb)
-\t\tlog_cb(RETRO_LOG_DEBUG, "%s", buffer);
-\telse
-\t\tfputs(buffer, stderr);
-#else
-\tfputs(buffer, stderr);
-#endif
-}
-"""
-          if old_output not in text:
-              raise SystemExit("Could not locate retro_osd_interface::output_oslog")
-          text = text.replace(old_output, new_output, 1)
-
-          old_init = """\tif (options().oslog())
-\t{
-\t\tusing namespace std::placeholders;
-\t\tmachine.add_logerror_callback(std::bind(&retro_osd_interface::output_oslog, this, _1));
-\t}
-"""
-          new_init = """\tif (options().oslog()
-#if ARRANGE_AUDIO_DIAGNOSTIC
-\t\t|| true
-#endif
-\t)
-\t{
-\t\tusing namespace std::placeholders;
-\t\tmachine.add_logerror_callback(std::bind(&retro_osd_interface::output_oslog, this, _1));
-\t}
-"""
-          if old_init not in text:
-              raise SystemExit("Could not locate retro_osd_interface::init oslog block")
-          text = text.replace(old_init, new_init, 1)
-
-          retromain.write_text(text, encoding="utf-8")
-
-          # ------------------------------------------------------------
           # Libretro/Windows input fix for the diagnostic build
           #
           # retroprefix.h intentionally defines SDLMAME_WIN32 for the
@@ -166,14 +114,12 @@ jobs:
               raise SystemExit("Libretro SDL exclusion was not applied correctly")
 
           print("FFS diagnostic instrumentation applied.")
-          print("Libretro logerror routing applied to retromain.cpp.")
           print("Libretro SDL input exclusion applied to input_common.cpp/.h.")
           PY
 
           git diff --check
           git diff -- \
             src/mame/snk/neogeo.cpp \
-            src/osd/libretro/retromain.cpp \
             src/osd/modules/input/input_common.cpp \
             src/osd/modules/input/input_common.h
 
