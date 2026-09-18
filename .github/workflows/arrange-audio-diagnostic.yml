@@ -1,7 +1,7 @@
 name: Arrange Audio - FFS Diagnostic Build
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -87,42 +87,42 @@ jobs:
           text = retromain.read_text(encoding="utf-8")
 
           old_output = """void retro_osd_interface::output_oslog(const char *buffer)
-{
-\tfputs(buffer, stderr);
-}
-"""
+          {
+          \tfputs(buffer, stderr);
+          }
+          """
           new_output = """void retro_osd_interface::output_oslog(const char *buffer)
-{
-#if ARRANGE_AUDIO_DIAGNOSTIC
-\tif (log_cb)
-\t\tlog_cb(RETRO_LOG_DEBUG, "%s", buffer);
-\telse
-\t\tfputs(buffer, stderr);
-#else
-\tfputs(buffer, stderr);
-#endif
-}
-"""
+          {
+          #if ARRANGE_AUDIO_DIAGNOSTIC
+          \tif (log_cb)
+          \t\tlog_cb(RETRO_LOG_DEBUG, "%s", buffer);
+          \telse
+          \t\tfputs(buffer, stderr);
+          #else
+          \tfputs(buffer, stderr);
+          #endif
+          }
+          """
           if old_output not in text:
               raise SystemExit("Could not locate retro_osd_interface::output_oslog")
           text = text.replace(old_output, new_output, 1)
 
           old_init = """\tif (options().oslog())
-\t{
-\t\tusing namespace std::placeholders;
-\t\tmachine.add_logerror_callback(std::bind(&retro_osd_interface::output_oslog, this, _1));
-\t}
-"""
+          \t{
+          \t\tusing namespace std::placeholders;
+          \t\tmachine.add_logerror_callback(std::bind(&retro_osd_interface::output_oslog, this, _1));
+          \t}
+          """
           new_init = """\tif (options().oslog()
-#if ARRANGE_AUDIO_DIAGNOSTIC
-\t\t|| true
-#endif
-\t)
-\t{
-\t\tusing namespace std::placeholders;
-\t\tmachine.add_logerror_callback(std::bind(&retro_osd_interface::output_oslog, this, _1));
-\t}
-"""
+          #if ARRANGE_AUDIO_DIAGNOSTIC
+          \t\t|| true
+          #endif
+          \t)
+          \t{
+          \t\tusing namespace std::placeholders;
+          \t\tmachine.add_logerror_callback(std::bind(&retro_osd_interface::output_oslog, this, _1));
+          \t}
+          """
           if old_init not in text:
               raise SystemExit("Could not locate retro_osd_interface::init oslog block")
           text = text.replace(old_init, new_init, 1)
