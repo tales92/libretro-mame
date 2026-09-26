@@ -1,6 +1,9 @@
 name: Build MAME Seibu Cup Soccer
 
 on:
+  push:
+    paths:
+      - ".github/workflows/build-mame-seibu-cupsoc.yml"
   workflow_dispatch:
 
 jobs:
