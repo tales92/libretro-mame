@@ -1,0 +1,67 @@
+name: Build MAME Seibu Cup Soccer
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@e9898307ac31d1a803454791be09ab9973336e1c
+        with:
+          msystem: UCRT64
+          install: >-
+            git
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-lld
+            mingw-w64-ucrt-x86_64-llvm
+            mingw-w64-ucrt-x86_64-libc++
+            mingw-w64-ucrt-x86_64-sdl3
+
+      - name: Checkout exact MAME commit
+        uses: actions/checkout@main
+        with:
+          repository: rmonic79/mame
+          ref: 84ef4b2f862b56563fc76a5e61341081b1123aa7
+          fetch-depth: 0
+
+      - name: Build MAME
+        env:
+          OVERRIDE_AR: llvm-ar
+          OVERRIDE_CC: gcc
+          OVERRIDE_CXX: g++
+          ARCHOPTS: "-fuse-ld=lld"
+          SUBTARGET: mame
+          TOOLS: 1
+          USE_SDL3: 1
+        run: make -j3
+
+      - name: Validate MAME
+        run: ./mame.exe -validate
+
+      - name: Show version
+        run: ./mame.exe -version
+
+      - name: Create build information
+        run: |
+          echo "Repository: https://github.com/rmonic79/mame" > build-info.txt
+          echo "Branch: seibu-cop-cupsoc" >> build-info.txt
+          echo "Commit: 84ef4b2f862b56563fc76a5e61341081b1123aa7" >> build-info.txt
+
+      - name: Upload MAME build
+        uses: actions/upload-artifact@main
+        with:
+          name: mame-seibu-cop-cupsoc-windows
+          path: |
+            mame.exe
+            chdman.exe
+            unidasm.exe
+            build-info.txt
+          if-no-files-found: error
