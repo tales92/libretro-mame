@@ -1,8 +1,7 @@
 name: CI (Libretro - Android ARM64)
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -40,4 +39,4 @@ jobs:
             OVERRIDE_AR="$TOOLCHAIN/bin/llvm-ar" \
             WITH_ANDROID="30" \
             CROSS_BUILD=1 \
-            -j$(nproc)
+            -j"$(nproc)"
