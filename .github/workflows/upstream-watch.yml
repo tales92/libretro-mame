@@ -1,0 +1,172 @@
+name: MAME upstream watch
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+      timezone: "America/Sao_Paulo"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: mame-upstream-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Check mamedev/mame for new commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out CURRENT configuration
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Read integration baseline
+        id: baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATE_FILE=".github/upstream/mame-sync.json"
+
+          HISTORICAL_SHA="$(jq -r '.historical_reference_sha' "$STATE_FILE")"
+          INITIAL_SYNC_COMPLETE="$(jq -r '.initial_sync_complete' "$STATE_FILE")"
+
+          if [[ "$INITIAL_SYNC_COMPLETE" == "true" ]]; then
+            BASE_SHA="$(jq -r '.last_integrated_upstream_sha // empty' "$STATE_FILE")"
+            if [[ -z "$BASE_SHA" || "$BASE_SHA" == "null" ]]; then
+              echo "::error::initial_sync_complete is true, but last_integrated_upstream_sha is empty."
+              exit 1
+            fi
+          else
+            BASE_SHA="$HISTORICAL_SHA"
+          fi
+
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "historical_sha=$HISTORICAL_SHA" >> "$GITHUB_OUTPUT"
+          echo "initial_sync_complete=$INITIAL_SYNC_COMPLETE" >> "$GITHUB_OUTPUT"
+
+      - name: Compare with current MAME upstream
+        id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE_SHA="${{ steps.baseline.outputs.base_sha }}"
+          UPSTREAM_SHA="$(gh api repos/mamedev/mame/commits/master --jq '.sha')"
+          COMPARE_JSON="$(gh api "repos/mamedev/mame/compare/${BASE_SHA}...${UPSTREAM_SHA}")"
+
+          STATUS="$(jq -r '.status' <<< "$COMPARE_JSON")"
+          MERGE_BASE="$(jq -r '.merge_base_commit.sha // empty' <<< "$COMPARE_JSON")"
+          AHEAD_BY="$(jq -r '.ahead_by // 0' <<< "$COMPARE_JSON")"
+
+          if [[ "$MERGE_BASE" != "$BASE_SHA" ]]; then
+            echo "::error::The configured baseline is not an ancestor of current mamedev/mame master. Refusing to calculate a misleading commit count."
+            echo "Configured baseline: $BASE_SHA"
+            echo "GitHub merge base: $MERGE_BASE"
+            exit 1
+          fi
+
+          if [[ "$STATUS" != "ahead" && "$STATUS" != "identical" ]]; then
+            echo "::error::Unexpected GitHub comparison status: $STATUS"
+            exit 1
+          fi
+
+          {
+            echo "upstream_sha=$UPSTREAM_SHA"
+            echo "ahead_by=$AHEAD_BY"
+            echo "compare_status=$STATUS"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## MAME upstream check"
+            echo
+            echo "- Baseline: `$BASE_SHA`"
+            echo "- Current upstream: `$UPSTREAM_SHA`"
+            echo "- Commits after baseline: **$AHEAD_BY**"
+            echo "- Comparison: [$STATUS](https://github.com/mamedev/mame/compare/$BASE_SHA...$UPSTREAM_SHA)"
+            echo
+            if [[ "${{ steps.baseline.outputs.initial_sync_complete }}" != "true" ]]; then
+              echo "> Initial synchronization is not complete. This is a raw ancestry count from the MAME 0.289 historical reference, not a claim that all these commits remain unincluded in the Libretro fork."
+            else
+              echo "> The baseline is the exact MAME upstream commit recorded after the initial integration."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or refresh upstream integration issue
+        if: steps.compare.outputs.ahead_by != '0' || steps.baseline.outputs.initial_sync_complete != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ steps.baseline.outputs.base_sha }}
+          UPSTREAM_SHA: ${{ steps.compare.outputs.upstream_sha }}
+          AHEAD_BY: ${{ steps.compare.outputs.ahead_by }}
+          INITIAL_SYNC_COMPLETE: ${{ steps.baseline.outputs.initial_sync_complete }}
+          HISTORICAL_SHA: ${{ steps.baseline.outputs.historical_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TITLE="[Upstream Sync] MAME changes awaiting integration"
+          COMPARE_URL="https://github.com/mamedev/mame/compare/$BASE_SHA...$UPSTREAM_SHA"
+          BODY_FILE="$(mktemp)"
+
+          if [[ "$INITIAL_SYNC_COMPLETE" == "true" ]]; then
+            cat > "$BODY_FILE" <<EOF
+          ## MAME upstream updates detected
+
+          The scheduled monitor found **$AHEAD_BY** new upstream commit(s) after the last verified integration baseline.
+
+          - Repository: https://github.com/mamedev/mame
+          - Integrated baseline: `$BASE_SHA`
+          - Latest upstream commit: `$UPSTREAM_SHA`
+          - Comparison: $COMPARE_URL
+
+          This issue records the upstream delta. The integration workflow must preserve the Libretro layer, resolve compatibility changes, and run both Windows x64 and Linux x86_64 CI before publishing new experimental artifacts.
+          EOF
+          else
+            cat > "$BODY_FILE" <<EOF
+          ## Initial MAME upstream synchronization is still pending
+
+          The scheduled monitor is active, but the first full upstream integration has not yet been confirmed.
+
+          - Historical reference: MAME 0.289, `$HISTORICAL_SHA`
+          - Latest upstream commit: `$UPSTREAM_SHA`
+          - Raw commits since historical reference: **$AHEAD_BY**
+          - Comparison: $COMPARE_URL
+
+          **Important:** the raw ancestry count is not the number of commits still missing from the Libretro fork. The Libretro branch contains downstream history and may already include selected upstream changes. The initial integration audit must identify the exact upstream commit incorporated before the baseline can be advanced.
+
+          This monitor does not merge source code. It only detects and records upstream changes until the initial integration strategy has been validated.
+          EOF
+          fi
+
+          ISSUE_NUMBER="$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" --jq '.[] | select(.pull_request == null) | select(.title == "[Upstream Sync] MAME changes awaiting integration") | .number' | head -n 1)"
+
+          if [[ -z "$ISSUE_NUMBER" ]]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file "$BODY_FILE"
+          else
+            CURRENT_BODY="$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" --jq '.body // ""')"
+            NEW_BODY="$(cat "$BODY_FILE")"
+            if [[ "$CURRENT_BODY" != "$NEW_BODY" ]]; then
+              gh issue edit "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$BODY_FILE"
+            fi
+          fi
+
+      - name: Close upstream integration issue when fully synchronized
+        if: steps.compare.outputs.ahead_by == '0' && steps.baseline.outputs.initial_sync_complete == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ISSUE_NUMBER="$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" --jq '.[] | select(.pull_request == null) | select(.title == "[Upstream Sync] MAME changes awaiting integration") | .number' | head -n 1)"
+          if [[ -n "$ISSUE_NUMBER" ]]; then
+            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --comment "The recorded MAME upstream baseline now matches the latest upstream master. No commits are pending after the verified integration baseline."
+          fi
+          echo "No upstream commits are pending after the verified integration baseline." >> "$GITHUB_STEP_SUMMARY"
