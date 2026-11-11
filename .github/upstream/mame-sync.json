@@ -1,0 +1,9 @@
+{
+  "upstream_repository": "mamedev/mame",
+  "upstream_branch": "master",
+  "historical_reference_sha": "f34f02505e32c1993c6a782b6814232cbfc74e36",
+  "historical_reference_version": "MAME 0.289",
+  "initial_sync_complete": false,
+  "last_integrated_upstream_sha": null,
+  "note": "Do not set initial_sync_complete=true until the initial upstream integration has been completed and the exact mamedev/mame commit incorporated by that integration has been verified."
+}
