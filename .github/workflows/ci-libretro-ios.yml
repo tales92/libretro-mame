@@ -1,8 +1,7 @@
 name: CI (Libretro - iOS)
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -19,4 +18,4 @@ jobs:
         run: |
           make -f Makefile.libretro \
             platform=ios \
-            -j$(sysctl -n hw.ncpu)
+            -j"$(sysctl -n hw.ncpu)"
