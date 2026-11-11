@@ -1,24 +1,57 @@
-name: CI (libretro - Windows MingW)
+name: CI (MAME CURRENT - Windows x64)
 
 on:
   push:
+    paths:
+      - "3rdparty/**"
+      - "scripts/**"
+      - "src/**"
+      - "Makefile"
+      - "Makefile.*"
+      - "makefile"
+      - "makefile.*"
+      - "**/*.mak"
+      - "**/*.lua"
+      - "**/*.py"
   pull_request:
+    paths:
+      - "3rdparty/**"
+      - "scripts/**"
+      - "src/**"
+      - "Makefile"
+      - "Makefile.*"
+      - "makefile"
+      - "makefile.*"
+      - "**/*.mak"
+      - "**/*.lua"
+      - "**/*.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mame-current-windows-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: Build MAME Libretro for Windows x64
     runs-on: ubuntu-latest
+    timeout-minutes: 360
 
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install MinGW
+      - name: Install MinGW-w64 and inspection tools
         run: |
-          sudo apt update
-          sudo apt install -y mingw-w64 gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix file
 
-      - name: Build
+      - name: Build Libretro core
         shell: bash
         run: |
+          set -euo pipefail
           export CC=x86_64-w64-mingw32-gcc-posix
           export CXX=x86_64-w64-mingw32-g++-posix
           export AR=x86_64-w64-mingw32-ar
@@ -26,4 +59,63 @@ jobs:
           make -f Makefile.libretro \
             platform=win \
             MINGW64=1 \
-            -j$(nproc)
+            -j"$(nproc)"
+
+      - name: Verify and package Windows x64 core
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CORE_PATH="$(find . -type f -name 'mame_libretro.dll' -not -path './.git/*' -print -quit)"
+          if [[ -z "$CORE_PATH" ]]; then
+            echo "::error::The build completed but mame_libretro.dll was not found."
+            echo "DLL files produced:"
+            find . -type f -iname '*.dll' -print | head -n 100
+            exit 1
+          fi
+
+          FILE_INFO="$(file "$CORE_PATH")"
+          echo "$FILE_INFO"
+          if ! grep -Eqi 'PE32\+.*x86-64|PE32\+.*x86_64' <<< "$FILE_INFO"; then
+            echo "::error::The output is not a 64-bit Windows PE DLL."
+            exit 1
+          fi
+
+          mkdir -p dist/windows-x64
+          cp "$CORE_PATH" dist/windows-x64/mame_libretro.dll
+
+          HISTORICAL_SHA="$(jq -r '.historical_reference_sha' .github/upstream/mame-sync.json)"
+          INITIAL_SYNC_COMPLETE="$(jq -r '.initial_sync_complete' .github/upstream/mame-sync.json)"
+
+          cat > dist/windows-x64/BUILD-INFO.txt <<EOF
+          Project: MAME Libretro Current
+          Status: Unofficial experimental build
+          Platform: Windows x64
+          Fork commit: $GITHUB_SHA
+          Historical MAME reference: $HISTORICAL_SHA
+          Initial upstream integration completed: $INITIAL_SYNC_COMPLETE
+          Build timestamp (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          Runtime validation in RetroArch: Not performed by this build job
+          EOF
+
+          (cd dist/windows-x64 && sha256sum mame_libretro.dll > SHA256SUMS.txt)
+
+          {
+            echo "## Windows x64 build artifact"
+            echo
+            echo "- File: `mame_libretro.dll`"
+            echo "- Architecture: `$(file dist/windows-x64/mame_libretro.dll)`"
+            echo "- Fork commit: `$GITHUB_SHA`"
+            echo "- SHA-256: `$(cut -d ' ' -f 1 dist/windows-x64/SHA256SUMS.txt)`"
+            echo
+            echo "The DLL was compiled and its PE architecture was checked. A real RetroArch session test is not performed here."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Windows x64 artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: mame-current-windows-x64-${{ github.sha }}
+          path: dist/windows-x64/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
