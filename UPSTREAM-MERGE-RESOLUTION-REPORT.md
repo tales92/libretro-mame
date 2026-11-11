@@ -22,6 +22,49 @@ Of those paths, 29 were also changed by upstream:
 
 The upstream versions of those two LZMA makefiles were retained. The fork's other 25 deletions were applied.
 
+
+## Complete inventory of the 29 shared paths
+
+### Three paths with manually reconciled overlapping hunks
+
+- `scripts/genie.lua`
+- `scripts/src/main.lua`
+- `src/osd/modules/lib/osdobj_common.cpp`
+
+### Twenty-four paths with disjoint fork/upstream change hunks
+
+- `3rdparty/lzma/C/AesOpt.c`
+- `README.md`
+- `makefile`
+- `scripts/src/3rdparty.lua`
+- `scripts/src/devices.lua`
+- `scripts/src/emu.lua`
+- `scripts/toolchain.lua`
+- `src/devices/bus/nscsi/cd.cpp`
+- `src/devices/video/psx.cpp`
+- `src/emu/diimage.cpp`
+- `src/emu/emuopts.cpp`
+- `src/emu/machine.cpp`
+- `src/emu/machine.h`
+- `src/emu/save.cpp`
+- `src/emu/screen.cpp`
+- `src/emu/sound.cpp`
+- `src/emu/video.cpp`
+- `src/frontend/mame/clifront.cpp`
+- `src/frontend/mame/mame.cpp`
+- `src/frontend/mame/ui/ui.cpp`
+- `src/mame/cave/cv1k.cpp`
+- `src/mame/mame.lst`
+- `src/mame/snk/neogeocd.cpp`
+- `src/osd/osdsync.cpp`
+
+### Two fork deletions retained from upstream
+
+- `3rdparty/lzma/C/7zip_gcc_c.mak`
+- `3rdparty/lzma/C/var_clang_arm64.mak`
+
+The inventory above accounts for all 29 same-path changes found by comparing the base, fork and upstream Git trees.
+
 ## Three manually reconciled overlapping hunks
 
 1. `scripts/genie.lua`: retained upstream's JCDB configuration handling and incorporated the fork's `libretro` and `libretrodbg` configurations into the normal configuration list.
