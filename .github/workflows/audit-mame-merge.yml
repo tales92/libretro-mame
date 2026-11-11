@@ -1,0 +1,121 @@
+name: Audit MAME three-way integration
+
+on:
+  push:
+    branches:
+      - integration/mame-upstream-candidate
+    paths:
+      - ".github/workflows/audit-mame-merge.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mame-three-way-audit
+  cancel-in-progress: false
+
+jobs:
+  merge-audit:
+    name: Analyze upstream merge without changing repository branches
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Prepare partial Git history
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p merge-audit
+          cd merge-audit
+          git init
+          git config protocol.version 2
+
+          git remote add fork "https://github.com/${GITHUB_REPOSITORY}.git"
+          git remote add mamedev "https://github.com/mamedev/mame.git"
+
+          git -c protocol.version=2 fetch --filter=blob:none --no-tags fork \
+            "refs/heads/integration/mame-upstream-candidate:refs/remotes/fork/candidate"
+          git -c protocol.version=2 fetch --filter=blob:none --no-tags mamedev \
+            "refs/heads/master:refs/remotes/mamedev/master"
+
+          FORK_SHA="$(git rev-parse refs/remotes/fork/candidate)"
+          UPSTREAM_SHA="$(git rev-parse refs/remotes/mamedev/master)"
+          MERGE_BASE="$(git merge-base "$FORK_SHA" "$UPSTREAM_SHA")"
+
+          {
+            echo "Fork candidate SHA: $FORK_SHA"
+            echo "MAME upstream SHA: $UPSTREAM_SHA"
+            echo "Merge base SHA: $MERGE_BASE"
+            echo "Upstream commits after merge base: $(git rev-list --count "$MERGE_BASE..$UPSTREAM_SHA")"
+            echo "Fork commits after merge base: $(git rev-list --count "$MERGE_BASE..$FORK_SHA")"
+          } | tee merge-audit-metadata.txt
+
+          if [[ "$MERGE_BASE" != "f34f02505e32c1993c6a782b6814232cbfc74e36" ]]; then
+            echo "::warning::The computed merge base differs from the historical MAME 0.289 reference. Review the ancestry before continuing."
+          fi
+
+          echo "$FORK_SHA" > fork-sha.txt
+          echo "$UPSTREAM_SHA" > upstream-sha.txt
+          echo "$MERGE_BASE" > merge-base-sha.txt
+
+      - name: Compute three-way merge tree and conflict report
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd merge-audit
+
+          FORK_SHA="$(cat fork-sha.txt)"
+          UPSTREAM_SHA="$(cat upstream-sha.txt)"
+
+          set +e
+          git merge-tree --write-tree "$FORK_SHA" "$UPSTREAM_SHA" > merge-tree-output.txt 2>&1
+          MERGE_EXIT=$?
+          set -e
+
+          echo "$MERGE_EXIT" > merge-exit-code.txt
+          FIRST_LINE="$(head -n 1 merge-tree-output.txt || true)"
+          if [[ "$FIRST_LINE" =~ ^[0-9a-f]{40,64}$ ]]; then
+            echo "$FIRST_LINE" > merged-tree-sha.txt
+          fi
+
+          grep -E '^(CONFLICT|Auto-merging|warning:|[[:space:]]+CONFLICT)' \
+            merge-tree-output.txt > conflict-summary.txt || true
+
+          {
+            echo "## Three-way merge audit"
+            echo
+            cat merge-audit-metadata.txt
+            echo
+            echo "- Git merge-tree exit code: $MERGE_EXIT"
+            if [[ "$MERGE_EXIT" -eq 0 ]]; then
+              echo "- Result: Git calculated a clean automatic merge tree."
+              if [[ -f merged-tree-sha.txt ]]; then
+                echo "- Merged tree SHA: `$(cat merged-tree-sha.txt)`"
+              fi
+              echo "- No merge commit was created and no repository branch was changed."
+            elif [[ "$MERGE_EXIT" -eq 1 ]]; then
+              echo "- Result: merge conflicts require manual resolution."
+              echo "- Conflict summary lines: $(wc -l < conflict-summary.txt)"
+              echo "- Full output is available in the `mame-three-way-merge-audit` artifact."
+            else
+              echo "- Result: merge-tree failed for a reason other than an ordinary conflict. Inspect the artifact output."
+            fi
+            echo
+            echo "This job performs Git analysis only. It does not run either platform build."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$MERGE_EXIT" -gt 1 ]]; then
+            echo "::error::git merge-tree failed with exit code $MERGE_EXIT."
+            exit "$MERGE_EXIT"
+          fi
+
+      - name: Upload merge audit report
+        uses: actions/upload-artifact@v7
+        with:
+          name: mame-three-way-merge-audit-${{ github.sha }}
+          path: merge-audit/
+          if-no-files-found: error
+          retention-days: 30
