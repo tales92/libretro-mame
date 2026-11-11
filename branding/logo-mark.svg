@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">CURRENT brand mark</title>
+  <desc id="desc">Display frame, pixel blocks and an active signal waveform.</desc>
+  <defs><linearGradient id="cyan" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#45DDF2"/><stop offset="1" stop-color="#78F0D0"/></linearGradient></defs>
+  <rect width="256" height="256" rx="48" fill="#0B1220"/>
+  <path d="M49 25H190L231 66V190L190 231H66L25 190V66Z" fill="#101D31" stroke="url(#cyan)" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M57 72H91V106H57Z M57 119H91V153H57Z M57 166H91V188H57Z" fill="#45DDF2"/>
+  <path d="M111 181H133V151H155V111H178V130H201" fill="none" stroke="#FFBE55" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter"/>
+  <circle cx="201" cy="130" r="9" fill="#FFBE55"/><path d="M111 201H201" stroke="#42627B" stroke-width="5"/>
+</svg>
