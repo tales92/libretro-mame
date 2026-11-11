@@ -49,3 +49,16 @@ Content checks confirmed that the resulting commit contains the Libretro makefil
 The separate GitHub Actions `git merge-tree` audit (run `43079522079`) remained queued when this report was prepared, so its official artifact was not available. This report records the independent tree and line-level comparison used to construct the candidate; it does not claim that the queued workflow completed.
 
 No Windows or Linux compilation was started, and no RetroArch runtime test has been performed. Those checks remain deliberately separate from this conflict-resolution step.
+
+
+## CI event note (after creating the resolved branch)
+
+The fork's previous CI definitions had unconditional `push` triggers. Publishing the resolved merge candidate and the report therefore created two push-triggered sets of CI runs. At the last status check (2026-11-11 19:02:53 UTC), all listed runs were queued; no completion result was available:
+
+- Windows x64: runs `43083394763` and `43083496611`
+- Linux x86_64: runs `43083394771` and `43083496501`
+- Android ARM64: runs `43083394783` and `43083496811`
+- iOS: runs `43083394780` and `43083496536`
+- macOS: runs `43083394778` and `43083496467`
+
+The resolved branch's CI definitions were then updated: Windows and Linux now trigger only for relevant source/build-file paths or manual dispatch; Android, iOS and macOS are manual-dispatch only. This workflow-only update did not create another CI run. The current configuration is intended to avoid future platform-wide runs from documentation-only or workflow-only changes.
