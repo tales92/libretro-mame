@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">CURRENT — MAME Libretro experimental core</title>
+  <desc id="desc">Original CURRENT identity: a digital display frame containing pixels and a rising signal waveform.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B1220"/><stop offset="1" stop-color="#111F35"/></linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#45DDF2"/><stop offset="1" stop-color="#78F0D0"/></linearGradient>
+  </defs>
+  <rect width="1200" height="360" rx="30" fill="url(#bg)"/>
+  <g transform="translate(72 75)">
+    <path d="M30 0H194L224 30V180L194 210H30L0 180V30Z" fill="#101D31" stroke="url(#cyan)" stroke-width="7" stroke-linejoin="round"/>
+    <path d="M35 43H72V80H35Z M35 94H72V131H35Z M35 145H72V168H35Z" fill="#45DDF2"/>
+    <path d="M91 160H117V130H142V92H167V111H190" fill="none" stroke="#FFBE55" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter"/>
+    <circle cx="190" cy="111" r="8" fill="#FFBE55"/><path d="M91 177H190" stroke="#42627B" stroke-width="4"/>
+  </g>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="350" y="105" font-size="27" font-weight="700" letter-spacing="8" fill="#FFBE55">MAME / LIBRETRO</text>
+    <text x="344" y="216" font-size="106" font-weight="800" letter-spacing="3" fill="#EAF4FF">CURRENT</text>
+    <text x="352" y="267" font-size="24" font-weight="600" letter-spacing="5" fill="#86A5BD">EXPERIMENTAL CORE</text>
+    <text x="352" y="314" font-size="21" letter-spacing="1.5" fill="#B4C7D8">O código evolui. A história continua.</text>
+  </g>
+  <path d="M1084 76V284" stroke="#294158" stroke-width="2"/><circle cx="1084" cy="76" r="5" fill="#45DDF2"/><circle cx="1084" cy="284" r="5" fill="#FFBE55"/>
+</svg>
