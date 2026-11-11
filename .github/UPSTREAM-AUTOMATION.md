@@ -73,3 +73,19 @@ After the initial MAME-to-Libretro reconciliation, a separate integration workfl
 4. Launch Windows x64 and Linux x86_64 builds.
 5. Move the last-integrated marker only after the integration outcome is verified.
 6. Keep previous successful artifacts available when a candidate fails.
+
+## Git divergence snapshot — 2026-11-11
+
+The GitHub compare API was used to check the current references before choosing an integration strategy:
+
+- Historical base: `f34f02505e32c1993c6a782b6814232cbfc74e36` (MAME 0.289).
+- MAME upstream `master`: `518bb5e53379c124833415da5cb2d22d6acf845a`, 2,197 commits ahead of the historical base.
+- Personal fork `master`: `e944659076e866b3fa407619487c7be7a9275a26`, 733 commits along the other side of the divergence.
+- Comparing the personal fork head against current MAME upstream identifies the historical base above as the merge base, with the two histories diverged.
+- The personal fork and current `libretro/mame` also diverged after `4fc9a9312baaf34963847f884961ad9793fbbc1d`: the fork has 23 commits on its side, while the Libretro upstream has 4 commits on its side.
+
+### Integration implication
+
+The initial upstream port should be prepared as a **three-way Git merge** of `mamedev/mame` into a new candidate branch based on the personal fork, using the historical common ancestor as the merge base. This preserves both commit histories and lets Git identify real conflicts. It is preferable to indiscriminate cherry-picking.
+
+The commit counts are history counts, not a calculation of how many source changes are still missing. Some downstream commits may already contain selected upstream changes under different commit identities. The merge candidate still requires a source-level conflict/duplicate-change audit before it can be considered integrated.
