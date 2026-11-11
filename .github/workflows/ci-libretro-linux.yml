@@ -1,12 +1,44 @@
-name: CI (Libretro - Linux x86_64)
+name: CI (MAME CURRENT - Linux x86_64)
 
 on:
   push:
+    paths:
+      - "3rdparty/**"
+      - "scripts/**"
+      - "src/**"
+      - "Makefile"
+      - "Makefile.*"
+      - "makefile"
+      - "makefile.*"
+      - "**/*.mak"
+      - "**/*.lua"
+      - "**/*.py"
   pull_request:
+    paths:
+      - "3rdparty/**"
+      - "scripts/**"
+      - "src/**"
+      - "Makefile"
+      - "Makefile.*"
+      - "makefile"
+      - "makefile.*"
+      - "**/*.mak"
+      - "**/*.lua"
+      - "**/*.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mame-current-linux-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: Build MAME Libretro for Linux x86_64
     runs-on: ubuntu-latest
+    timeout-minutes: 360
 
     steps:
       - uses: actions/checkout@v7
@@ -17,6 +49,7 @@ jobs:
           sudo apt-get install -y \
             build-essential \
             python3 \
+            file \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
             libegl1-mesa-dev \
@@ -29,9 +62,67 @@ jobs:
             libxxf86vm-dev \
             mesa-common-dev
 
-      - name: Build
+      - name: Build Libretro core
         run: |
+          set -euo pipefail
           make -f Makefile.libretro \
             platform=linux \
-            -j$(nproc)
+            -j"$(nproc)"
 
+      - name: Verify and package Linux x86_64 core
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CORE_PATH="$(find . -type f -name 'mame_libretro.so' -not -path './.git/*' -print -quit)"
+          if [[ -z "$CORE_PATH" ]]; then
+            echo "::error::The build completed but mame_libretro.so was not found."
+            echo "Shared objects produced:"
+            find . -type f -iname '*.so' -print | head -n 100
+            exit 1
+          fi
+
+          FILE_INFO="$(file "$CORE_PATH")"
+          echo "$FILE_INFO"
+          if ! grep -Eqi 'ELF 64-bit.*x86-64|ELF 64-bit.*x86_64' <<< "$FILE_INFO"; then
+            echo "::error::The output is not a 64-bit Linux x86_64 shared object."
+            exit 1
+          fi
+
+          mkdir -p dist/linux-x86_64
+          cp "$CORE_PATH" dist/linux-x86_64/mame_libretro.so
+
+          HISTORICAL_SHA="$(jq -r '.historical_reference_sha' .github/upstream/mame-sync.json)"
+          INITIAL_SYNC_COMPLETE="$(jq -r '.initial_sync_complete' .github/upstream/mame-sync.json)"
+
+          cat > dist/linux-x86_64/BUILD-INFO.txt <<EOF
+          Project: MAME Libretro Current
+          Status: Unofficial experimental build
+          Platform: Linux x86_64
+          Fork commit: $GITHUB_SHA
+          Historical MAME reference: $HISTORICAL_SHA
+          Initial upstream integration completed: $INITIAL_SYNC_COMPLETE
+          Build timestamp (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          Runtime validation in RetroArch: Not performed by this build job
+          EOF
+
+          (cd dist/linux-x86_64 && sha256sum mame_libretro.so > SHA256SUMS.txt)
+
+          {
+            echo "## Linux x86_64 build artifact"
+            echo
+            echo "- File: `mame_libretro.so`"
+            echo "- Architecture: `$(file dist/linux-x86_64/mame_libretro.so)`"
+            echo "- Fork commit: `$GITHUB_SHA`"
+            echo "- SHA-256: `$(cut -d ' ' -f 1 dist/linux-x86_64/SHA256SUMS.txt)`"
+            echo
+            echo "The shared object was compiled and its ELF architecture was checked. A real RetroArch session test is not performed here."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Linux x86_64 artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: mame-current-linux-x86_64-${{ github.sha }}
+          path: dist/linux-x86_64/
+          if-no-files-found: error
+          retention-days: 30
