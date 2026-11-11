@@ -495,7 +495,7 @@ void screen_device::configure(int width, int height, const rectangle &visarea, a
 	if (screen_configured > 10
 			&& width == m_width
 			&& height == m_height
-			&& floorf(ATTOSECONDS_TO_HZ(frame_period)) == floorf(ATTOSECONDS_TO_HZ(m_frame_period)))
+			&& floorf(frame_period.as_hz()) == floorf(ATTOSECONDS_TO_HZ(m_frame_period)))
 		return;
 #endif
 
