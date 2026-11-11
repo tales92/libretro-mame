@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="500" viewBox="0 0 1600 500" role="img" aria-labelledby="title desc">
+  <title id="title">MAME Libretro Current — project banner</title>
+  <desc id="desc">A dark technical banner with the CURRENT identity and an abstract signal-grid motif.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#08111E"/><stop offset="0.55" stop-color="#102039"/><stop offset="1" stop-color="#0B182A"/></linearGradient>
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#45DDF2" stop-opacity="0.15"/><stop offset="0.45" stop-color="#45DDF2"/><stop offset="1" stop-color="#FFBE55"/></linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#35506A" stroke-width="1" opacity="0.35"/></pattern>
+  </defs>
+  <rect width="1600" height="500" fill="url(#bg)"/><rect width="1600" height="500" fill="url(#grid)" opacity="0.7"/>
+  <g transform="translate(108 145) scale(0.9)">
+    <path d="M30 0H194L224 30V180L194 210H30L0 180V30Z" fill="#101D31" stroke="#45DDF2" stroke-width="7" stroke-linejoin="round"/>
+    <path d="M35 43H72V80H35Z M35 94H72V131H35Z M35 145H72V168H35Z" fill="#45DDF2"/>
+    <path d="M91 160H117V130H142V92H167V111H190" fill="none" stroke="#FFBE55" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter"/><circle cx="190" cy="111" r="8" fill="#FFBE55"/>
+  </g>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="360" y="177" font-size="30" font-weight="700" letter-spacing="9" fill="#FFBE55">MAME / LIBRETRO</text>
+    <text x="350" y="294" font-size="118" font-weight="800" letter-spacing="3" fill="#EAF4FF">CURRENT</text>
+    <text x="360" y="348" font-size="25" font-weight="600" letter-spacing="6" fill="#86A5BD">EXPERIMENTAL CORE</text>
+    <text x="360" y="410" font-size="25" letter-spacing="1.5" fill="#C5D5E2">O código evolui. A história continua.</text>
+  </g>
+  <g opacity="0.9" fill="none" stroke-linecap="square">
+    <path d="M1035 340H1110V300H1184V225H1258V264H1330V180H1405V115H1515" stroke="url(#wave)" stroke-width="7"/>
+    <path d="M1035 380H1515 M1035 145H1515" stroke="#35506A" stroke-width="2"/>
+    <path d="M1108 105V410 M1258 105V410 M1408 105V410" stroke="#294158" stroke-width="1" stroke-dasharray="4 12"/>
+  </g>
+  <g fill="#45DDF2"><circle cx="1110" cy="300" r="7"/><circle cx="1258" cy="264" r="7"/></g>
+  <circle cx="1515" cy="115" r="8" fill="#FFBE55"/>
+  <text x="1485" y="462" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="15" letter-spacing="3" fill="#6F8AA4">UNOFFICIAL • COMMUNITY EXPERIMENT</text>
+</svg>
