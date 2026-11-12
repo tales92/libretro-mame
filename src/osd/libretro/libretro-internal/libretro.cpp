@@ -10,7 +10,7 @@
 #include "emu.h"
 #include "emuopts.h"
 #include "render.h"
-#include "video.h"
+#include "../../../emu/video.h"
 #include "ui/uimain.h"
 #include "uiinput.h"
 #include "drivenum.h"
