@@ -28,7 +28,7 @@
 #define KEY_TRANS_WIN32(disc, virtual)
 #endif
 
-#if defined(OSD_SDL) || (defined(SDLMAME_WIN32) && !defined(__LIBRETRO__))
+#if !defined(OSD_RETRO) && (defined(OSD_SDL) || (defined(SDLMAME_WIN32) && !defined(__LIBRETRO__)))
 #ifdef SDLMAME_SDL3
 #include <SDL3/SDL.h>
 #else
