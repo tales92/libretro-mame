@@ -2,7 +2,7 @@ name: MAME CURRENT - upstream sync and Win/Linux builds
 
 on:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
   push:
     branches:
@@ -64,6 +64,12 @@ jobs:
             exit 1
           fi
 
+          if [[ "$UPDATE_AVAILABLE" == "true" ]]; then
+            ACTION_TEXT="merge and build"
+          else
+            ACTION_TEXT="no build needed"
+          fi
+
           {
             echo "update_available=$UPDATE_AVAILABLE"
             echo "target_sha=$TARGET_SHA"
@@ -79,7 +85,7 @@ jobs:
             echo "- Integration branch: `$TARGET_BRANCH`"
             echo "- Integration branch commit: `$TARGET_SHA`"
             echo "- Upstream commits not yet included: **$BEHIND_BY**"
-            echo "- Action: **$([[ "$UPDATE_AVAILABLE" == "true" ]] && echo "merge and build" || echo "no build needed")**"
+            echo "- Action: **$ACTION_TEXT**"
           } >> "$GITHUB_STEP_SUMMARY"
 
   prepare:
@@ -122,6 +128,10 @@ jobs:
           UPSTREAM_SHA="$(git rev-parse refs/remotes/libretro-upstream/master)"
           if ! git cat-file -e "$CHECKED_UPSTREAM_SHA^{commit}" 2>/dev/null; then
             echo "::error::The upstream commit recorded by the check is no longer available in the fetched history."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$CHECKED_UPSTREAM_SHA" "$UPSTREAM_SHA"; then
+            echo "::error::libretro/mame history changed between check and fetch. Refusing to integrate an unexpected history."
             exit 1
           fi
 
