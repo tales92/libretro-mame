@@ -33,6 +33,8 @@ jobs:
       target_sha: ${{ steps.check.outputs.target_sha }}
       upstream_sha: ${{ steps.check.outputs.upstream_sha }}
       behind_by: ${{ steps.check.outputs.behind_by }}
+      previous_upstream_sha: ${{ steps.check.outputs.previous_upstream_sha }}
+      version: ${{ steps.check.outputs.version }}
     steps:
       - name: Compare mamedev/mame with the integration branch
         id: check
@@ -84,11 +86,16 @@ jobs:
             ACTION_TEXT="no build needed"
           fi
 
+          VERSION_DATE="$(TZ=America/Sao_Paulo date +'%Y.%m.%d')"
+          VERSION="v${VERSION_DATE}.${GITHUB_RUN_NUMBER}"
+
           {
             echo "update_available=$UPDATE_AVAILABLE"
             echo "target_sha=$TARGET_SHA"
             echo "upstream_sha=$UPSTREAM_SHA"
             echo "behind_by=$BEHIND_BY"
+            echo "previous_upstream_sha=$TRACKED_BASE_SHA"
+            echo "version=$VERSION"
           } >> "$GITHUB_OUTPUT"
 
           {
@@ -114,6 +121,8 @@ jobs:
       base_sha: ${{ steps.merge.outputs.base_sha }}
       candidate_sha: ${{ steps.merge.outputs.candidate_sha }}
       upstream_sha: ${{ steps.merge.outputs.upstream_sha }}
+      previous_upstream_sha: ${{ steps.merge.outputs.previous_upstream_sha }}
+      version: ${{ steps.merge.outputs.version }}
     steps:
       - name: Check out the validated integration branch
         uses: actions/checkout@v7
@@ -127,6 +136,8 @@ jobs:
         env:
           EXPECTED_BASE_SHA: ${{ needs.check.outputs.target_sha }}
           CHECKED_UPSTREAM_SHA: ${{ needs.check.outputs.upstream_sha }}
+          PREVIOUS_UPSTREAM_SHA: ${{ needs.check.outputs.previous_upstream_sha }}
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
           set -euo pipefail
 
@@ -187,6 +198,8 @@ jobs:
             echo "base_sha=$BASE_SHA"
             echo "candidate_sha=$CANDIDATE_SHA"
             echo "upstream_sha=$UPSTREAM_SHA"
+            echo "previous_upstream_sha=$PREVIOUS_UPSTREAM_SHA"
+            echo "version=$VERSION"
           } >> "$GITHUB_OUTPUT"
 
           {
@@ -271,15 +284,18 @@ jobs:
         env:
           PLATFORM: ${{ matrix.target }}
           UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
           BUILD_SHA="$(git rev-parse HEAD)"
 
           if [[ "$PLATFORM" == "linux" ]]; then
             CORE_NAME="mame_libretro.so"
+            PLATFORM_LABEL="linux-x86_64"
             DIST_DIR="dist/linux-x86_64"
           else
             CORE_NAME="mame_libretro.dll"
+            PLATFORM_LABEL="windows-x64"
             DIST_DIR="dist/windows-x64"
           fi
 
@@ -310,8 +326,10 @@ jobs:
 
           cat > "$DIST_DIR/BUILD-INFO.txt" <<EOF
           Project: MAME Libretro Current
+          Release version: $VERSION
           Status: Unofficial experimental build
-          Platform: $PLATFORM
+          Historical reference: MAME 0.289
+          Platform: $PLATFORM_LABEL
           Integration branch: $TARGET_BRANCH
           Build commit: $BUILD_SHA
           mamedev/mame upstream commit: $UPSTREAM_SHA
@@ -320,6 +338,21 @@ jobs:
           EOF
 
           (cd "$DIST_DIR" && sha256sum "$CORE_NAME" > SHA256SUMS.txt)
+
+          PACKAGE_PATH="dist/mame-libretro-${VERSION}-${PLATFORM_LABEL}.zip"
+          python3 - "$DIST_DIR" "$PACKAGE_PATH" <<'PY'
+          import pathlib
+          import sys
+          import zipfile
+
+          source = pathlib.Path(sys.argv[1])
+          archive = pathlib.Path(sys.argv[2])
+          with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
+              for item in sorted(source.iterdir()):
+                  if item.is_file():
+                      bundle.write(item, arcname=item.name)
+          print(f"Created {archive}")
+          PY
 
           {
             echo "## $PLATFORM artifact"
@@ -336,8 +369,8 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mame-current-${{ matrix.target }}-${{ needs.prepare.outputs.candidate_sha }}
-          path: dist/
+          name: mame-libretro-${{ needs.prepare.outputs.version }}-${{ matrix.target }}
+          path: dist/*.zip
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -386,4 +419,131 @@ jobs:
             echo "- New commit: \`$CANDIDATE_SHA\`"
             echo "- Integrated mamedev/mame commit: \`$UPSTREAM_SHA\`"
             echo "- Both Windows x64 and Linux x86_64 builds passed."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Publish versioned GitHub Release
+    needs:
+      - check
+      - prepare
+      - build
+      - publish
+    if: needs.check.outputs.update_available == 'true' && needs.build.result == 'success' && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the promoted integration commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.candidate_sha }}
+          fetch-depth: 0
+
+      - name: Download both platform packages
+        uses: actions/download-artifact@v7
+        with:
+          pattern: mame-libretro-${{ needs.prepare.outputs.version }}-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Generate detailed release notes
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PREVIOUS_UPSTREAM_SHA: ${{ needs.check.outputs.previous_upstream_sha }}
+          UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
+          CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+
+          if ! git cat-file -e "$PREVIOUS_UPSTREAM_SHA^{commit}" 2>/dev/null; then
+            echo "::error::The previous upstream baseline is not available in the promoted Git history."
+            exit 1
+          fi
+          if ! git cat-file -e "$UPSTREAM_SHA^{commit}" 2>/dev/null; then
+            echo "::error::The new upstream baseline is not available in the promoted Git history."
+            exit 1
+          fi
+
+          shopt -s nullglob
+          PACKAGES=(release-assets/*.zip)
+          if [[ "${#PACKAGES[@]}" -ne 2 ]]; then
+            echo "::error::Expected exactly two platform ZIP packages; found ${#PACKAGES[@]}."
+            printf '%s\n' "${PACKAGES[@]}"
+            exit 1
+          fi
+
+          {
+            echo "# MAME Libretro $VERSION"
+            echo
+            echo "Builds created from the integration of the official `mamedev/mame` repository."
+            echo
+            echo "### Included builds"
+            echo
+            echo "- Windows x64: `mame-libretro-$VERSION-windows-x64.zip` (contains `mame_libretro.dll`)"
+            echo "- Linux x86_64: `mame-libretro-$VERSION-linux-x86_64.zip` (contains `mame_libretro.so`)"
+            echo
+            echo "Each package includes `BUILD-INFO.txt` and `SHA256SUMS.txt`."
+            echo
+            echo "### What changed"
+            echo
+            echo "- Historical project reference: MAME 0.289."
+            echo "- Upstream source: [mamedev/mame](https://github.com/mamedev/mame), branch `master`."
+            echo "- Previous integrated upstream commit: [`$PREVIOUS_UPSTREAM_SHA`](https://github.com/mamedev/mame/commit/$PREVIOUS_UPSTREAM_SHA)."
+            echo "- New integrated upstream commit: [`$UPSTREAM_SHA`](https://github.com/mamedev/mame/commit/$UPSTREAM_SHA)."
+            echo "- Integration commit: [`$CANDIDATE_SHA`](https://github.com/$GITHUB_REPOSITORY/commit/$CANDIDATE_SHA)."
+            echo
+            echo "#### Upstream commits included in this release"
+            echo
+          } > release-notes.md
+
+          COMMIT_COUNT="$(git rev-list --count --no-merges "$PREVIOUS_UPSTREAM_SHA..$UPSTREAM_SHA")"
+          if [[ "$COMMIT_COUNT" -gt 0 ]]; then
+            git log --reverse --no-merges --format='- %s ([%h](https://github.com/mamedev/mame/commit/%H))' "$PREVIOUS_UPSTREAM_SHA..$UPSTREAM_SHA" >> release-notes.md
+          else
+            echo "No non-merge upstream commits were found in the tracked range." >> release-notes.md
+          fi
+
+          {
+            echo
+            echo "#### Change summary"
+            echo
+            git diff --stat --compact-summary "$PREVIOUS_UPSTREAM_SHA" "$UPSTREAM_SHA" | head -n 60
+            echo
+            echo "### Build validation"
+            echo
+            echo "- Both Windows x64 and Linux x86_64 build jobs completed successfully."
+            echo "- The architecture and core binary format were checked."
+            echo "- Runtime testing inside RetroArch was not performed by GitHub Actions."
+          } >> release-notes.md
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          PACKAGES=(release-assets/*.zip)
+          if [[ "${#PACKAGES[@]}" -ne 2 ]]; then
+            echo "::error::Release assets are incomplete."
+            exit 1
+          fi
+
+          TITLE="MAME Libretro $VERSION"
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" "${PACKAGES[@]}" --clobber
+            gh release edit "$VERSION" --title "$TITLE" --notes-file release-notes.md
+          else
+            gh release create "$VERSION" "${PACKAGES[@]}" --title "$TITLE" --notes-file release-notes.md --target "$CANDIDATE_SHA"
+          fi
+
+          {
+            echo "## GitHub Release publicada"
+            echo
+            echo "- Version: [$VERSION](https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION)"
+            echo "- Assets: Windows x64 e Linux x86_64"
+            echo "- Notes: upstream commits e resumo do diff."
           } >> "$GITHUB_STEP_SUMMARY"
