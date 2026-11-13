@@ -1,0 +1,19 @@
+name: Retire obsolete MAME sync queue entry
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/retire-obsolete-sync-queue.yml"
+
+concurrency:
+  group: mame-current-upstream-sync-build
+  cancel-in-progress: false
+
+jobs:
+  retire-obsolete-queue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: No-op queue replacement
+        run: echo "Replaced the obsolete queued workflow run. The current MAME automation tracks mamedev/mame."
