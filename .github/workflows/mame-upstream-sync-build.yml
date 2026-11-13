@@ -1,0 +1,352 @@
+name: MAME CURRENT - upstream sync and Win/Linux builds
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/mame-upstream-sync-build.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mame-current-upstream-sync-build
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: integration/mame-upstream-resolved-2026-11-11
+  CANDIDATE_BRANCH: automation/mame-upstream-candidate
+  UPSTREAM_REPOSITORY: libretro/mame
+
+jobs:
+  check:
+    name: Check the direct upstream repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      update_available: ${{ steps.check.outputs.update_available }}
+      target_sha: ${{ steps.check.outputs.target_sha }}
+      upstream_sha: ${{ steps.check.outputs.upstream_sha }}
+      behind_by: ${{ steps.check.outputs.behind_by }}
+    steps:
+      - name: Compare libretro/mame with the integration branch
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TARGET_SHA="$(gh api "repos/$GITHUB_REPOSITORY/commits?sha=$TARGET_BRANCH&per_page=1" --jq '.[0].sha')"
+          UPSTREAM_SHA="$(gh api "repos/$UPSTREAM_REPOSITORY/commits/master" --jq '.sha')"
+
+          if [[ -z "$TARGET_SHA" || "$TARGET_SHA" == "null" || -z "$UPSTREAM_SHA" || "$UPSTREAM_SHA" == "null" ]]; then
+            echo "::error::Could not resolve the integration branch or libretro/mame master."
+            exit 1
+          fi
+
+          COMPARE_JSON="$(gh api "repos/$GITHUB_REPOSITORY/compare/$UPSTREAM_SHA...$TARGET_SHA")"
+          STATUS="$(jq -r '.status // "unknown"' <<< "$COMPARE_JSON")"
+          BEHIND_BY="$(jq -r '.behind_by // 0' <<< "$COMPARE_JSON")"
+          MERGE_BASE="$(jq -r '.merge_base_commit.sha // empty' <<< "$COMPARE_JSON")"
+
+          if [[ "$STATUS" == "ahead" || "$STATUS" == "identical" ]] && [[ "$BEHIND_BY" == "0" ]]; then
+            UPDATE_AVAILABLE="false"
+          elif [[ -n "$MERGE_BASE" && "$BEHIND_BY" -gt 0 ]]; then
+            UPDATE_AVAILABLE="true"
+          else
+            echo "::error::The GitHub comparison is not safe to automate (status=$STATUS, behind_by=$BEHIND_BY, merge_base=$MERGE_BASE)."
+            exit 1
+          fi
+
+          {
+            echo "update_available=$UPDATE_AVAILABLE"
+            echo "target_sha=$TARGET_SHA"
+            echo "upstream_sha=$UPSTREAM_SHA"
+            echo "behind_by=$BEHIND_BY"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## libretro/mame upstream check"
+            echo
+            echo "- Upstream repository: https://github.com/libretro/mame"
+            echo "- Latest upstream commit: [$UPSTREAM_SHA](https://github.com/libretro/mame/commit/$UPSTREAM_SHA)"
+            echo "- Integration branch: `$TARGET_BRANCH`"
+            echo "- Integration branch commit: `$TARGET_SHA`"
+            echo "- Upstream commits not yet included: **$BEHIND_BY**"
+            echo "- Action: **$([[ "$UPDATE_AVAILABLE" == "true" ]] && echo "merge and build" || echo "no build needed")**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  prepare:
+    name: Prepare an upstream integration candidate
+    needs: check
+    if: needs.check.outputs.update_available == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    outputs:
+      base_sha: ${{ steps.merge.outputs.base_sha }}
+      candidate_sha: ${{ steps.merge.outputs.candidate_sha }}
+      upstream_sha: ${{ steps.merge.outputs.upstream_sha }}
+    steps:
+      - name: Check out the validated integration branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+
+      - name: Merge the latest libretro/mame changes
+        id: merge
+        shell: bash
+        env:
+          EXPECTED_BASE_SHA: ${{ needs.check.outputs.target_sha }}
+          CHECKED_UPSTREAM_SHA: ${{ needs.check.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+
+          BASE_SHA="$(git rev-parse HEAD)"
+          if [[ "$BASE_SHA" != "$EXPECTED_BASE_SHA" ]]; then
+            echo "::error::The integration branch changed after the check. Refusing to merge against an unexpected base."
+            exit 1
+          fi
+
+          git remote add libretro-upstream "https://github.com/$UPSTREAM_REPOSITORY.git"
+          git fetch --no-tags libretro-upstream refs/heads/master
+
+          UPSTREAM_SHA="$(git rev-parse refs/remotes/libretro-upstream/master)"
+          if ! git cat-file -e "$CHECKED_UPSTREAM_SHA^{commit}" 2>/dev/null; then
+            echo "::error::The upstream commit recorded by the check is no longer available in the fetched history."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if ! git merge-base HEAD "$UPSTREAM_SHA" >/dev/null; then
+            echo "::error::No common Git ancestor was found. The workflow will not replace or reset the integration branch."
+            exit 1
+          fi
+
+          if ! git merge --no-edit --no-ff "$UPSTREAM_SHA" -m "Merge libretro/mame upstream through $UPSTREAM_SHA"; then
+            {
+              echo "## Upstream merge stopped"
+              echo
+              echo "The merge conflicted. The stable integration branch was not changed."
+              echo
+              echo "Conflicting files:"
+              git diff --name-only --diff-filter=U | sed 's/^/- /'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          CANDIDATE_SHA="$(git rev-parse HEAD)"
+          git push --force origin "$CANDIDATE_SHA:refs/heads/$CANDIDATE_BRANCH"
+
+          {
+            echo "base_sha=$BASE_SHA"
+            echo "candidate_sha=$CANDIDATE_SHA"
+            echo "upstream_sha=$UPSTREAM_SHA"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Integration candidate prepared"
+            echo
+            echo "- Previous stable commit: `$BASE_SHA`"
+            echo "- libretro/mame commit included: `$UPSTREAM_SHA`"
+            echo "- Candidate commit: `$CANDIDATE_SHA`"
+            echo "- Candidate branch: `$CANDIDATE_BRANCH`"
+            echo
+            echo "The stable integration branch will only be advanced after both desktop builds pass."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: prepare
+    if: needs.prepare.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x86_64
+            target: linux
+          - platform: Windows x64
+            target: windows
+    steps:
+      - name: Check out the candidate integration
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.CANDIDATE_BRANCH }}
+          fetch-depth: 1
+
+      - name: Install Linux build dependencies
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            python3 \
+            file \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libegl1-mesa-dev \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxxf86vm-dev \
+            mesa-common-dev
+
+      - name: Install Windows cross-compiler
+        if: matrix.target == 'windows'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix file
+
+      - name: Build Linux x86_64 core
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -f Makefile.libretro platform=linux -j"$(nproc)"
+
+      - name: Build Windows x64 core
+        if: matrix.target == 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CC=x86_64-w64-mingw32-gcc-posix
+          export CXX=x86_64-w64-mingw32-g++-posix
+          export AR=x86_64-w64-mingw32-ar
+          make -f Makefile.libretro platform=win MINGW64=1 -j"$(nproc)"
+
+      - name: Verify and package the compiled core
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.target }}
+          UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$PLATFORM" == "linux" ]]; then
+            CORE_NAME="mame_libretro.so"
+            DIST_DIR="dist/linux-x86_64"
+          else
+            CORE_NAME="mame_libretro.dll"
+            DIST_DIR="dist/windows-x64"
+          fi
+
+          CORE_PATH="$(find . -type f -name "$CORE_NAME" -not -path './.git/*' -print -quit)"
+          if [[ -z "$CORE_PATH" ]]; then
+            echo "::error::The build completed but $CORE_NAME was not found."
+            find . -type f \( -name '*.so' -o -name '*.dll' \) -print | head -n 100
+            exit 1
+          fi
+
+          FILE_INFO="$(file "$CORE_PATH")"
+          echo "$FILE_INFO"
+
+          if [[ "$PLATFORM" == "linux" ]]; then
+            if ! grep -Eqi 'ELF 64-bit.*(x86-64|x86_64)' <<< "$FILE_INFO"; then
+              echo "::error::The output is not an ELF 64-bit x86_64 shared object."
+              exit 1
+            fi
+          else
+            if ! grep -Eqi 'PE32\+.*(x86-64|x86_64)' <<< "$FILE_INFO"; then
+              echo "::error::The output is not a Windows x64 PE DLL."
+              exit 1
+            fi
+          fi
+
+          mkdir -p "$DIST_DIR"
+          cp "$CORE_PATH" "$DIST_DIR/$CORE_NAME"
+
+          cat > "$DIST_DIR/BUILD-INFO.txt" <<EOF
+          Project: MAME Libretro Current
+          Status: Unofficial experimental build
+          Platform: $PLATFORM
+          Integration branch: $TARGET_BRANCH
+          Build commit: $GITHUB_SHA
+          libretro/mame upstream commit: $UPSTREAM_SHA
+          Build timestamp (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          Runtime validation in RetroArch: Not performed by this build job
+          EOF
+
+          (cd "$DIST_DIR" && sha256sum "$CORE_NAME" > SHA256SUMS.txt)
+
+          {
+            echo "## $PLATFORM artifact"
+            echo
+            echo "- File: `$CORE_NAME`"
+            echo "- Architecture: `$FILE_INFO`"
+            echo "- Build commit: `$GITHUB_SHA`"
+            echo "- libretro/mame commit: `$UPSTREAM_SHA`"
+            echo "- SHA-256: `$(cut -d ' ' -f 1 "$DIST_DIR/SHA256SUMS.txt")`"
+            echo
+            echo "The core compiled and its architecture was checked. A live RetroArch test is not performed."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: mame-current-${{ matrix.target }}-${{ needs.prepare.outputs.candidate_sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  publish:
+    name: Promote the tested integration
+    needs:
+      - check
+      - prepare
+      - build
+    if: needs.check.outputs.update_available == 'true' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the current stable integration branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 1
+
+      - name: Advance the stable branch after both builds pass
+        shell: bash
+        env:
+          EXPECTED_BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+
+          CURRENT_SHA="$(git rev-parse HEAD)"
+          if [[ "$CURRENT_SHA" != "$EXPECTED_BASE_SHA" ]]; then
+            echo "::error::The stable integration branch changed while the builds were running. Refusing to overwrite it."
+            exit 1
+          fi
+
+          git fetch origin "refs/heads/$CANDIDATE_BRANCH:refs/remotes/origin/$CANDIDATE_BRANCH"
+          CANDIDATE_SHA="$(git rev-parse "refs/remotes/origin/$CANDIDATE_BRANCH")"
+
+          git push origin "$CANDIDATE_SHA:refs/heads/$TARGET_BRANCH"
+          git push origin --delete "$CANDIDATE_BRANCH" || echo "::notice::The temporary candidate branch could not be deleted; it can be replaced by the next run."
+
+          {
+            echo "## Upstream integration published"
+            echo
+            echo "- Stable branch: `$TARGET_BRANCH`"
+            echo "- New commit: `$CANDIDATE_SHA`"
+            echo "- Integrated libretro/mame commit: `$UPSTREAM_SHA`"
+            echo "- Both Windows x64 and Linux x86_64 builds passed."
+          } >> "$GITHUB_STEP_SUMMARY"
