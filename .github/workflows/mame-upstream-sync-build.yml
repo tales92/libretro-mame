@@ -14,17 +14,17 @@ permissions:
   contents: write
 
 concurrency:
-  group: mame-current-upstream-sync-build
+  group: mame-primary-upstream-sync-build
   cancel-in-progress: false
 
 env:
   TARGET_BRANCH: integration/mame-upstream-resolved-2026-11-11
-  CANDIDATE_BRANCH: automation/mame-upstream-candidate
-  UPSTREAM_REPOSITORY: libretro/mame
+  CANDIDATE_BRANCH: automation/mamedev-mame-candidate
+  UPSTREAM_REPOSITORY: mamedev/mame
 
 jobs:
   check:
-    name: Check the direct upstream repository
+    name: Check mamedev/mame for new commits
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,7 +34,7 @@ jobs:
       upstream_sha: ${{ steps.check.outputs.upstream_sha }}
       behind_by: ${{ steps.check.outputs.behind_by }}
     steps:
-      - name: Compare libretro/mame with the integration branch
+      - name: Compare mamedev/mame with the integration branch
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
@@ -46,7 +46,7 @@ jobs:
           UPSTREAM_SHA="$(gh api "repos/$UPSTREAM_REPOSITORY/commits/master" --jq '.sha')"
 
           if [[ -z "$TARGET_SHA" || "$TARGET_SHA" == "null" || -z "$UPSTREAM_SHA" || "$UPSTREAM_SHA" == "null" ]]; then
-            echo "::error::Could not resolve the integration branch or libretro/mame master."
+            echo "::error::Could not resolve the integration branch or mamedev/mame master."
             exit 1
           fi
 
@@ -78,10 +78,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           {
-            echo "## libretro/mame upstream check"
+            echo "## mamedev/mame upstream check"
             echo
-            echo "- Upstream repository: https://github.com/libretro/mame"
-            echo "- Latest upstream commit: [$UPSTREAM_SHA](https://github.com/libretro/mame/commit/$UPSTREAM_SHA)"
+            echo "- Upstream repository: https://github.com/mamedev/mame"
+            echo "- Latest upstream commit: [$UPSTREAM_SHA](https://github.com/mamedev/mame/commit/$UPSTREAM_SHA)"
             echo "- Integration branch: `$TARGET_BRANCH`"
             echo "- Integration branch commit: `$TARGET_SHA`"
             echo "- Upstream commits not yet included: **$BEHIND_BY**"
@@ -107,7 +107,7 @@ jobs:
           ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0
 
-      - name: Merge the latest libretro/mame changes
+      - name: Merge the latest mamedev/mame changes
         id: merge
         shell: bash
         env:
@@ -131,7 +131,7 @@ jobs:
             exit 1
           fi
           if ! git merge-base --is-ancestor "$CHECKED_UPSTREAM_SHA" "$UPSTREAM_SHA"; then
-            echo "::error::libretro/mame history changed between check and fetch. Refusing to integrate an unexpected history."
+            echo "::error::mamedev/mame history changed between check and fetch. Refusing to integrate an unexpected history."
             exit 1
           fi
 
@@ -143,7 +143,7 @@ jobs:
             exit 1
           fi
 
-          if ! git merge --no-edit --no-ff "$UPSTREAM_SHA" -m "Merge libretro/mame upstream through $UPSTREAM_SHA"; then
+          if ! git merge --no-edit --no-ff "$UPSTREAM_SHA" -m "Merge mamedev/mame upstream through $UPSTREAM_SHA"; then
             {
               echo "## Upstream merge stopped"
               echo
@@ -168,7 +168,7 @@ jobs:
             echo "## Integration candidate prepared"
             echo
             echo "- Previous stable commit: `$BASE_SHA`"
-            echo "- libretro/mame commit included: `$UPSTREAM_SHA`"
+            echo "- mamedev/mame commit included: `$UPSTREAM_SHA`"
             echo "- Candidate commit: `$CANDIDATE_SHA`"
             echo "- Candidate branch: `$CANDIDATE_BRANCH`"
             echo
@@ -289,7 +289,7 @@ jobs:
           Platform: $PLATFORM
           Integration branch: $TARGET_BRANCH
           Build commit: $BUILD_SHA
-          libretro/mame upstream commit: $UPSTREAM_SHA
+          mamedev/mame upstream commit: $UPSTREAM_SHA
           Build timestamp (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')
           Runtime validation in RetroArch: Not performed by this build job
           EOF
@@ -302,7 +302,7 @@ jobs:
             echo "- File: `$CORE_NAME`"
             echo "- Architecture: `$FILE_INFO`"
             echo "- Build commit: `$BUILD_SHA`"
-            echo "- libretro/mame commit: `$UPSTREAM_SHA`"
+            echo "- mamedev/mame commit: `$UPSTREAM_SHA`"
             echo "- SHA-256: `$(cut -d ' ' -f 1 "$DIST_DIR/SHA256SUMS.txt")`"
             echo
             echo "The core compiled and its architecture was checked. A live RetroArch test is not performed."
@@ -359,6 +359,6 @@ jobs:
             echo
             echo "- Stable branch: `$TARGET_BRANCH`"
             echo "- New commit: `$CANDIDATE_SHA`"
-            echo "- Integrated libretro/mame commit: `$UPSTREAM_SHA`"
+            echo "- Integrated mamedev/mame commit: `$UPSTREAM_SHA`"
             echo "- Both Windows x64 and Linux x86_64 builds passed."
           } >> "$GITHUB_STEP_SUMMARY"
