@@ -192,10 +192,10 @@ jobs:
           {
             echo "## Integration candidate prepared"
             echo
-            echo "- Previous stable commit: `$BASE_SHA`"
-            echo "- mamedev/mame commit included: `$UPSTREAM_SHA`"
-            echo "- Candidate commit: `$CANDIDATE_SHA`"
-            echo "- Candidate branch: `$CANDIDATE_BRANCH`"
+            echo "- Previous stable commit: \`$BASE_SHA\`"
+            echo "- mamedev/mame commit included: \`$UPSTREAM_SHA\`"
+            echo "- Candidate commit: \`$CANDIDATE_SHA\`"
+            echo "- Candidate branch: \`$CANDIDATE_BRANCH\`"
             echo
             echo "The stable integration branch will only be advanced after both desktop builds pass."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -324,11 +324,11 @@ jobs:
           {
             echo "## $PLATFORM artifact"
             echo
-            echo "- File: `$CORE_NAME`"
-            echo "- Architecture: `$FILE_INFO`"
-            echo "- Build commit: `$BUILD_SHA`"
-            echo "- mamedev/mame commit: `$UPSTREAM_SHA`"
-            echo "- SHA-256: `$(cut -d ' ' -f 1 "$DIST_DIR/SHA256SUMS.txt")`"
+            echo "- File: \`$CORE_NAME\`"
+            echo "- Architecture: \`$FILE_INFO\`"
+            echo "- Build commit: \`$BUILD_SHA\`"
+            echo "- mamedev/mame commit: \`$UPSTREAM_SHA\`"
+            echo "- SHA-256: \`$(cut -d ' ' -f 1 "$DIST_DIR/SHA256SUMS.txt")\`"
             echo
             echo "The core compiled and its architecture was checked. A live RetroArch test is not performed."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -382,8 +382,8 @@ jobs:
           {
             echo "## Upstream integration published"
             echo
-            echo "- Stable branch: `$TARGET_BRANCH`"
-            echo "- New commit: `$CANDIDATE_SHA`"
-            echo "- Integrated mamedev/mame commit: `$UPSTREAM_SHA`"
+            echo "- Stable branch: \`$TARGET_BRANCH\`"
+            echo "- New commit: \`$CANDIDATE_SHA\`"
+            echo "- Integrated mamedev/mame commit: \`$UPSTREAM_SHA\`"
             echo "- Both Windows x64 and Linux x86_64 builds passed."
           } >> "$GITHUB_STEP_SUMMARY"
