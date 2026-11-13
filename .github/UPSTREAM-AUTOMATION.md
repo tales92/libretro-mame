@@ -1,91 +1,47 @@
-# MAME CURRENT — upstream monitoring and desktop CI
+# MAME CURRENT — primary upstream synchronization and desktop CI
 
-## Scope
+## Upstream source
 
-This automation tracks the upstream repository `mamedev/mame` and prepares CI artifacts for:
+The primary source is **`mamedev/mame`**, branch `master`.
+
+The repository `libretro/mame` is not used as the update source. The fork uses the Libretro integration layer already present in this repository and builds it through `Makefile.libretro`.
+
+## Automatic synchronization
+
+Workflow: `.github/workflows/mame-upstream-sync-build.yml`
+
+- Scheduled every 15 minutes on the default branch.
+- Can also be started manually through `workflow_dispatch`.
+- Reads `.github/upstream/mame-sync.json`.
+- Checks the latest `mamedev/mame/master` commit.
+- Verifies that the recorded upstream baseline is the actual Git merge base of the integration branch.
+- If new MAME commits exist, creates a candidate by merging upstream into the integration branch.
+- Stops on merge conflicts or unexpected history changes; it does not resolve conflicts automatically.
+
+## Verified integration baseline
+
+The initial MAME integration is complete.
+
+- Historical common ancestor: `f34f02505e32c1993c6a782b6814232cbfc74e36` (MAME 0.289).
+- Last verified `mamedev/mame` commit included in the integration branch: `8dc81b82f2166f80b4a5fb68a8e71669bae910fc`.
+- The GitHub compare endpoint confirmed that exact commit as the merge base between the current upstream and `integration/mame-upstream-resolved-2026-11-11`.
+- The exact baseline is stored in `.github/upstream/mame-sync.json`.
+
+Only move the baseline forward as part of a candidate that successfully passes both desktop builds and is promoted to the stable integration branch.
+
+## Build and publication policy
+
+The workflow builds:
 
 - Windows x64: `mame_libretro.dll`
 - Linux x86_64: `mame_libretro.so`
 
-It reuses the fork's `Makefile.libretro`; it does not build the standalone MAME executable.
+Each build uses the candidate branch, verifies the output architecture, writes `BUILD-INFO.txt` and `SHA256SUMS.txt`, then uploads a GitHub Actions artifact with 30-day retention.
 
-## Periodic upstream check
+The stable branch `integration/mame-upstream-resolved-2026-11-11` is advanced only after **both** Windows x64 and Linux x86_64 builds succeed. If integration or either build fails, the previously validated branch remains unchanged. Build success confirms compilation and architecture, not a live RetroArch runtime test.
 
-Workflow: `.github/workflows/upstream-watch.yml`
+## Operational notes
 
-- Runs at minute 17 of every hour in `America/Sao_Paulo`.
-- Can also be started manually through `workflow_dispatch`.
-- Reads `.github/upstream/mame-sync.json`.
-- Queries current `mamedev/mame/master` through the GitHub API.
-- Uses GitHub's compare endpoint to validate ancestry and count commits after the configured baseline.
-- Opens or updates one tracking issue when changes are detected.
-- Closes that issue only when the initial integration is marked complete and the recorded baseline is fully synchronized.
-
-The watcher **does not merge upstream code**. Initial integration must be completed and validated first, so the periodic job cannot blindly merge thousands of changes into an unverified Libretro layer.
-
-## Baseline state
-
-The historical reference is `f34f02505e32c1993c6a782b6814232cbfc74e36`, whose commit message identifies MAME 0.289.
-
-At the time this automation was prepared, the initial upstream integration had not been completed. Therefore:
-
-- `initial_sync_complete` remains `false`.
-- `last_integrated_upstream_sha` remains `null`.
-- The watcher reports the raw number of commits since the historical reference.
-- That count is **not** the number of changes still missing from the Libretro fork. The Libretro repository has downstream history and may contain selected upstream changes under different commit identities.
-
-After initial reconciliation, update `mame-sync.json` only with the exact `mamedev/mame` commit whose code was verified as integrated. Then set `initial_sync_complete` to `true`. Never advance this marker merely because a build passed.
-
-## Windows and Linux build jobs
-
-Workflows:
-
-- `.github/workflows/ci-libretro-mingw.yml`
-- `.github/workflows/ci-libretro-linux.yml`
-
-They run automatically for relevant code/build-system changes under `src/`, `scripts/`, `3rdparty/` and related build files. Both can also be started manually.
-
-Each build job:
-
-1. Requires the expected Libretro shared library.
-2. Checks its architecture (`PE32+ x86-64` on Windows or `ELF 64-bit x86-64` on Linux).
-3. Packages the core with `BUILD-INFO.txt` and `SHA256SUMS.txt`.
-4. Uploads a GitHub Actions artifact named with the exact fork commit.
-5. Retains the artifact for 30 days.
-
-A successful compile and architecture check do not prove that the core has been tested in an actual RetroArch session. The build metadata states this distinction.
-
-## Other platform workflows
-
-Android, iOS and macOS workflows are retained, but changed to manual dispatch only. Automatic CI is focused on the two requested desktop targets.
-
-## Scheduled workflow activation
-
-GitHub scheduled workflows run only from the repository's default branch. The upstream watcher becomes active on its hourly schedule after this automation pull request is merged into `master`. Until then, its code is present for review but the schedule is not active.
-
-## Next integration phase
-
-After the initial MAME-to-Libretro reconciliation, a separate integration workflow can:
-
-1. Create/update a candidate branch from the last verified upstream baseline.
-2. Integrate upstream changes while preserving downstream Libretro commits.
-3. Stop and report conflicts instead of force-resolving them.
-4. Launch Windows x64 and Linux x86_64 builds.
-5. Move the last-integrated marker only after the integration outcome is verified.
-6. Keep previous successful artifacts available when a candidate fails.
-
-## Git divergence snapshot — 2026-11-11
-
-The GitHub compare API was used to check the current references before choosing an integration strategy:
-
-- Historical base: `f34f02505e32c1993c6a782b6814232cbfc74e36` (MAME 0.289).
-- MAME upstream `master`: `518bb5e53379c124833415da5cb2d22d6acf845a`, 2,197 commits ahead of the historical base.
-- Personal fork `master`: `e944659076e866b3fa407619487c7be7a9275a26`, 733 commits along the other side of the divergence.
-- Comparing the personal fork head against current MAME upstream identifies the historical base above as the merge base, with the two histories diverged.
-- The personal fork and current `libretro/mame` also diverged after `4fc9a9312baaf34963847f884961ad9793fbbc1d`: the fork has 23 commits on its side, while the Libretro upstream has 4 commits on its side.
-
-### Integration implication
-
-The initial upstream port should be prepared as a **three-way Git merge** of `mamedev/mame` into a new candidate branch based on the personal fork, using the historical common ancestor as the merge base. This preserves both commit histories and lets Git identify real conflicts. It is preferable to indiscriminate cherry-picking.
-
-The commit counts are history counts, not a calculation of how many source changes are still missing. Some downstream commits may already contain selected upstream changes under different commit identities. The merge candidate still requires a source-level conflict/duplicate-change audit before it can be considered integrated.
+- The temporary candidate branch is `automation/mamedev-mame-candidate`.
+- The workflow serializes synchronization attempts to avoid competing updates.
+- The MAME upstream commit included in each build is recorded in its artifact metadata and in the synchronization state file.
