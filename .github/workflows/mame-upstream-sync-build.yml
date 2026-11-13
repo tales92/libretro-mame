@@ -96,8 +96,8 @@ jobs:
             echo
             echo "- Upstream repository: https://github.com/mamedev/mame"
             echo "- Latest upstream commit: [$UPSTREAM_SHA](https://github.com/mamedev/mame/commit/$UPSTREAM_SHA)"
-            echo "- Integration branch: `$TARGET_BRANCH`"
-            echo "- Integration branch commit: `$TARGET_SHA`"
+            echo "- Integration branch: \`$TARGET_BRANCH\`"
+            echo "- Integration branch commit: \`$TARGET_SHA\`"
             echo "- Upstream commits not yet included: **$BEHIND_BY**"
             echo "- Action: **$ACTION_TEXT**"
           } >> "$GITHUB_STEP_SUMMARY"
