@@ -44,9 +44,16 @@ jobs:
 
           TARGET_SHA="$(gh api "repos/$GITHUB_REPOSITORY/commits?sha=$TARGET_BRANCH&per_page=1" --jq '.[0].sha')"
           UPSTREAM_SHA="$(gh api "repos/$UPSTREAM_REPOSITORY/commits/master" --jq '.sha')"
+          STATE_JSON="$(gh api "repos/$GITHUB_REPOSITORY/contents/.github/upstream/mame-sync.json?ref=$TARGET_BRANCH")"
+          TRACKED_BASE_SHA="$(jq -r '.content' <<< "$STATE_JSON" | base64 -d | jq -r '.last_integrated_upstream_sha // empty')"
+          INITIAL_SYNC_COMPLETE="$(jq -r '.content' <<< "$STATE_JSON" | base64 -d | jq -r '.initial_sync_complete')"
 
           if [[ -z "$TARGET_SHA" || "$TARGET_SHA" == "null" || -z "$UPSTREAM_SHA" || "$UPSTREAM_SHA" == "null" ]]; then
             echo "::error::Could not resolve the integration branch or mamedev/mame master."
+            exit 1
+          fi
+          if [[ "$INITIAL_SYNC_COMPLETE" != "true" || -z "$TRACKED_BASE_SHA" || "$TRACKED_BASE_SHA" == "null" ]]; then
+            echo "::error::The verified mamedev/mame integration baseline is missing. Refusing automatic merge."
             exit 1
           fi
 
@@ -54,6 +61,13 @@ jobs:
           STATUS="$(jq -r '.status // "unknown"' <<< "$COMPARE_JSON")"
           BEHIND_BY="$(jq -r '.behind_by // 0' <<< "$COMPARE_JSON")"
           MERGE_BASE="$(jq -r '.merge_base_commit.sha // empty' <<< "$COMPARE_JSON")"
+
+          if [[ "$MERGE_BASE" != "$TRACKED_BASE_SHA" ]]; then
+            echo "::error::The tracked MAME baseline does not match the Git merge base. Manual reconciliation is required."
+            echo "Tracked baseline: $TRACKED_BASE_SHA"
+            echo "Git merge base: $MERGE_BASE"
+            exit 1
+          fi
 
           if [[ "$STATUS" == "ahead" || "$STATUS" == "identical" ]] && [[ "$BEHIND_BY" == "0" ]]; then
             UPDATE_AVAILABLE="false"
@@ -122,10 +136,10 @@ jobs:
             exit 1
           fi
 
-          git remote add libretro-upstream "https://github.com/$UPSTREAM_REPOSITORY.git"
-          git fetch --no-tags libretro-upstream +refs/heads/master:refs/remotes/libretro-upstream/master
+          git remote add mamedev-upstream "https://github.com/$UPSTREAM_REPOSITORY.git"
+          git fetch --no-tags mamedev-upstream +refs/heads/master:refs/remotes/mamedev-upstream/master
 
-          UPSTREAM_SHA="$(git rev-parse refs/remotes/libretro-upstream/master)"
+          UPSTREAM_SHA="$(git rev-parse refs/remotes/mamedev-upstream/master)"
           if ! git cat-file -e "$CHECKED_UPSTREAM_SHA^{commit}" 2>/dev/null; then
             echo "::error::The upstream commit recorded by the check is no longer available in the fetched history."
             exit 1
@@ -154,6 +168,17 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
+
+          STATE_FILE=".github/upstream/mame-sync.json"
+          jq --arg sha "$UPSTREAM_SHA" '
+            .upstream_repository = "mamedev/mame"
+            | .upstream_branch = "master"
+            | .initial_sync_complete = true
+            | .last_integrated_upstream_sha = $sha
+          ' "$STATE_FILE" > "$STATE_FILE.tmp"
+          mv "$STATE_FILE.tmp" "$STATE_FILE"
+          git add "$STATE_FILE"
+          git commit -m "Record verified mamedev/mame baseline $UPSTREAM_SHA"
 
           CANDIDATE_SHA="$(git rev-parse HEAD)"
           git push --force origin "$CANDIDATE_SHA:refs/heads/$CANDIDATE_BRANCH"
