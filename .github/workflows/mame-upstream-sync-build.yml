@@ -117,7 +117,7 @@ jobs:
           fi
 
           git remote add libretro-upstream "https://github.com/$UPSTREAM_REPOSITORY.git"
-          git fetch --no-tags libretro-upstream refs/heads/master
+          git fetch --no-tags libretro-upstream +refs/heads/master:refs/remotes/libretro-upstream/master
 
           UPSTREAM_SHA="$(git rev-parse refs/remotes/libretro-upstream/master)"
           if ! git cat-file -e "$CHECKED_UPSTREAM_SHA^{commit}" 2>/dev/null; then
@@ -238,6 +238,7 @@ jobs:
           UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
         run: |
           set -euo pipefail
+          BUILD_SHA="$(git rev-parse HEAD)"
 
           if [[ "$PLATFORM" == "linux" ]]; then
             CORE_NAME="mame_libretro.so"
@@ -277,7 +278,7 @@ jobs:
           Status: Unofficial experimental build
           Platform: $PLATFORM
           Integration branch: $TARGET_BRANCH
-          Build commit: $GITHUB_SHA
+          Build commit: $BUILD_SHA
           libretro/mame upstream commit: $UPSTREAM_SHA
           Build timestamp (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')
           Runtime validation in RetroArch: Not performed by this build job
@@ -290,7 +291,7 @@ jobs:
             echo
             echo "- File: `$CORE_NAME`"
             echo "- Architecture: `$FILE_INFO`"
-            echo "- Build commit: `$GITHUB_SHA`"
+            echo "- Build commit: `$BUILD_SHA`"
             echo "- libretro/mame commit: `$UPSTREAM_SHA`"
             echo "- SHA-256: `$(cut -d ' ' -f 1 "$DIST_DIR/SHA256SUMS.txt")`"
             echo
@@ -327,6 +328,7 @@ jobs:
         shell: bash
         env:
           EXPECTED_BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+          UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
         run: |
           set -euo pipefail
 
