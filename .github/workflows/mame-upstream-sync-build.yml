@@ -455,7 +455,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Check out the promoted integration commit
+      - name: Check out the tested integration candidate
         uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.candidate_sha }}
