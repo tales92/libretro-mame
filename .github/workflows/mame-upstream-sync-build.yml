@@ -382,12 +382,13 @@ jobs:
           compression-level: 0
 
   publish:
-    name: Promote the tested integration
+    name: Promote the released integration
     needs:
       - check
       - prepare
       - build
-    if: needs.check.outputs.update_available == 'true' && needs.build.result == 'success'
+      - release
+    if: needs.check.outputs.update_available == 'true' && needs.build.result == 'success' && needs.release.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -433,8 +434,7 @@ jobs:
       - check
       - prepare
       - build
-      - publish
-    if: needs.check.outputs.update_available == 'true' && needs.build.result == 'success' && needs.publish.result == 'success'
+    if: needs.check.outputs.update_available == 'true' && needs.build.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
