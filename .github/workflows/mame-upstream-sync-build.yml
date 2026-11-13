@@ -40,6 +40,7 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -77,6 +78,11 @@ jobs:
             UPDATE_AVAILABLE="true"
           else
             echo "::error::The GitHub comparison is not safe to automate (status=$STATUS, behind_by=$BEHIND_BY, merge_base=$MERGE_BASE)."
+            exit 1
+          fi
+
+          if [[ "$UPDATE_AVAILABLE" == "true" && -z "${RELEASE_TOKEN:-}" ]]; then
+            echo "::error::Missing repository secret RELEASE_TOKEN. Add a fine-grained token with Contents: read/write and Workflows: read/write before building."
             exit 1
           fi
 
@@ -508,7 +514,7 @@ jobs:
             echo
             echo "#### Change summary"
             echo
-            git diff --stat --compact-summary "$PREVIOUS_UPSTREAM_SHA" "$UPSTREAM_SHA" | head -n 60
+            git diff --stat --compact-summary "$PREVIOUS_UPSTREAM_SHA" "$UPSTREAM_SHA" | sed -n '1,60p'
             echo
             echo "### Build validation"
             echo
@@ -519,7 +525,7 @@ jobs:
 
       - name: Publish the GitHub Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           VERSION: ${{ needs.prepare.outputs.version }}
           CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
         shell: bash
