@@ -96,7 +96,7 @@ jobs:
               echo "## Publication deferred"
               echo
               echo "- New commits were detected in mamedev/mame."
-              echo "- No merge or build was started because the repository secret `RELEASE_TOKEN` is missing."
+              echo '- No merge or build was started because the repository secret `RELEASE_TOKEN` is missing.'
               echo "- Add the token described in the repository setup instructions; the next check will retry the same upstream range."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
