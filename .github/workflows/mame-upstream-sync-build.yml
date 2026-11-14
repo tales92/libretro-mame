@@ -519,7 +519,9 @@ jobs:
             echo
           } > release-notes.md
 
-          python3 .github/scripts/generate-mame-release-notes.py \
+          git fetch --no-tags origin +refs/heads/master:refs/remotes/origin/master
+          git show refs/remotes/origin/master:.github/scripts/generate-mame-release-notes.py > "$RUNNER_TEMP/generate-mame-release-notes.py"
+          python3 "$RUNNER_TEMP/generate-mame-release-notes.py" \
             --previous-upstream-sha "$PREVIOUS_UPSTREAM_SHA" \
             --upstream-sha "$UPSTREAM_SHA" \
             --integration-commit "$CANDIDATE_SHA" \
