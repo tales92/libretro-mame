@@ -61,6 +61,18 @@ def describe(subject: str, paths: list[str]) -> tuple[str, str]:
             "Elas passam a ser documentadas pelo MAME, mas não devem ser anunciadas como jogáveis."
         )
 
+    promoted = (
+        "working" in low
+        and ("promot" in low or "mark " in low or "marked " in low or "machine_not_working" in low)
+        and "not working" not in low
+    )
+    if promoted:
+        item = clean_name(re.sub(r"^[^:]+:\\s*", "", text))
+        return "new", (
+            f"**{item}** — máquina ou versão promovida para o estado funcional no MAME. "
+            "Isso indica que ela deixou de ser marcada como não funcional; ainda é recomendável testar o funcionamento no core."
+        )
+
     if "star attack" in low and "galaxian" in path_text:
         return "new", (
             "**Star Attack (Hiraoka New York)** — novo jogo de arcade incluído no catálogo, "
