@@ -67,7 +67,7 @@ def describe(subject: str, paths: list[str]) -> tuple[str, str]:
         and "not working" not in low
     )
     if promoted:
-        item = clean_name(re.sub(r"^[^:]+:\\s*", "", text))
+        item = clean_name(re.sub(r"^[^:]+:\s*", "", text))
         return "new", (
             f"**{item}** — máquina ou versão promovida para o estado funcional no MAME. "
             "Isso indica que ela deixou de ser marcada como não funcional; ainda é recomendável testar o funcionamento no core."
