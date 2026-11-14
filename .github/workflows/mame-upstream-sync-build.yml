@@ -519,25 +519,14 @@ jobs:
             echo
           } > release-notes.md
 
-          COMMIT_COUNT="$(git rev-list --count --no-merges "$PREVIOUS_UPSTREAM_SHA..$UPSTREAM_SHA")"
-          if [[ "$COMMIT_COUNT" -gt 0 ]]; then
-            git log --reverse --no-merges --format='- %s ([%h](https://github.com/mamedev/mame/commit/%H))' "$PREVIOUS_UPSTREAM_SHA..$UPSTREAM_SHA" >> release-notes.md
-          else
-            echo "No non-merge upstream commits were found in the tracked range." >> release-notes.md
-          fi
-
-          {
-            echo
-            echo "#### Change summary"
-            echo
-            git diff --stat --compact-summary "$PREVIOUS_UPSTREAM_SHA" "$UPSTREAM_SHA" | sed -n '1,60p'
-            echo
-            echo "### Build validation"
-            echo
-            echo "- Both Windows x64 and Linux x86_64 build jobs completed successfully."
-            echo "- The architecture and core binary format were checked."
-            echo "- Runtime testing inside RetroArch was not performed by GitHub Actions."
-          } >> release-notes.md
+          python3 .github/scripts/generate-mame-release-notes.py \
+            --previous-upstream-sha "$PREVIOUS_UPSTREAM_SHA" \
+            --upstream-sha "$UPSTREAM_SHA" \
+            --integration-commit "$CANDIDATE_SHA" \
+            --version "$VERSION" \
+            --repository "$GITHUB_REPOSITORY" \
+            --asset-dir release-assets \
+            --output release-notes.md
 
       - name: Publish the GitHub Release
         env:
