@@ -18819,6 +18819,7 @@ vintkeys
 
 @source:ensoniq/enmirage.cpp
 enmirage
+enmirdms
 
 @source:ensoniq/esq1.cpp
 esq1
