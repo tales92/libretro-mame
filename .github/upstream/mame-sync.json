@@ -4,6 +4,6 @@
   "historical_reference_sha": "f34f02505e32c1993c6a782b6814232cbfc74e36",
   "historical_reference_version": "MAME 0.289",
   "initial_sync_complete": true,
-  "last_integrated_upstream_sha": "36d2b6b66135b4982727ad72b8430c0af5ca99a7",
+  "last_integrated_upstream_sha": "19b605cf64f8d8ee10b169f49cb774b0efe46ddd",
   "note": "Verified against GitHub compare: this exact mamedev/mame commit is the merge base and is included in integration/mame-upstream-resolved-2026-11-11. The active automation tracks mamedev/mame only; libretro/mame is not an upstream update source."
 }
